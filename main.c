@@ -1,7 +1,9 @@
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#include <X11/Xatom.h>
-#include <stdlib.h>
+#include<X11/Xlib.h>
+#include<X11/Xutil.h>
+#include<X11/Xatom.h>
+#include<GL/glx.h>
+#include<stdlib.h>
+#include<stdio.h>
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -42,16 +44,40 @@ int main() {
     );
 
     XSelectInput(display, window, ExposureMask | KeyPressMask);
+
+    GLint attributeList[] = { GLX_RGBA, GLX_DEPTH_SIZE, 24, GLX_DOUBLEBUFFER, None };
+    XVisualInfo *visualInfo = glXChooseVisual(display, 0, attributeList);
+    GLXContext c = glXCreateContext(display, visualInfo, NULL, GL_TRUE);
+    glXMakeCurrent(display, window, c);
+
     XMapWindow(display, window);
 
     XEvent event;
+    int i = 0;
     while (1) {
         XNextEvent(display, &event);
         if (event.type == Expose) {
             // Draw something if needed
         } else if (event.type == KeyPress) {
-            break;
+            if(event.xkey.keycode == 24/* q */) {
+                break;
+            }
         }
+
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        glLoadIdentity();
+
+        // Draw something simple (a red triangle)
+        glBegin(GL_TRIANGLES);
+        glColor3f(1.0, 0.0, 0.0);
+        glVertex2f(0.0, 0.5);  // Top vertex
+        glVertex2f(-0.5 + i * 0.1, -0.5); // Bottom left vertex
+        glVertex2f(0.5, -0.5);  // Bottom right vertex
+        glEnd();
+        i = i + 1;
+
+        glXSwapBuffers(display, window);
     }
 
     XDestroyWindow(display, window);
