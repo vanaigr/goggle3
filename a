@@ -1,0 +1,2 @@
+#!/bin/sh
+clang -lX11 main.c && ./a.out
