@@ -1,4 +1,4 @@
 #!/bin/sh
 # clang -lX11 -lGL $(pkg-config --cflags freetype2)\
 #     $(pkg-config --libs freetype2) main.c && ./a.out
-cmake -B ./build -S . -G Ninja && cmake --build ./build && ./build/Goggle3
+cmake -B ./build -S . -G Ninja -DCMAKE_BUILD_TYPE=Debug && cmake --build ./build && ./build/Goggle3

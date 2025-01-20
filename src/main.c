@@ -6,6 +6,7 @@
 #include<GL/glx.h>
 #include<stdlib.h>
 #include<stdio.h>
+#include<assert.h>
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -57,9 +58,33 @@ int main(int argc, char **argv) {
     FT_Init_FreeType(&F);
 
     FT_Face face;
-    FT_New_Face(F, "/usr/share/fonts/truetype/arial.ttf", 0, &face);
+    FT_New_Face(F, "/usr/share/fonts/truetype/freefont/FreeSans.ttf", 0, &face);
+    if(FT_Set_Pixel_Sizes(face, 0, 16)) {
+        printf("font where?\n");
+        return 1;
+    }
+
+    for(int i = 'a'; i < 'z' + 1; i++) {
+        if(FT_Load_Char(face, (char)i, FT_LOAD_RENDER)) {
+            printf("died on %d\n", i);
+            continue;
+        }
+        FT_GlyphSlot glyph = face->glyph;
+        FT_Bitmap v = glyph->bitmap;
+        assert(v.pixel_mode == 2 && "not grayscale?");
+        assert(v.pitch == v.width);
+        for(int y = 0; y < v.rows; y++) {
+            for(int x = 0; x < v.width; x++) {
+                char c = v.buffer[y * v.pitch + x] > 127 ? '#' : ' ';
+                printf("%c%c", c, c);
+            }
+            printf("\n");
+        }
+        printf("\n");
+    }
 
     XMapWindow(display, window);
+    return 0;
 
     XEvent event;
     int i = 0;
