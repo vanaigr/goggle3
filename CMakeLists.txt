@@ -1,12 +1,14 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(Goggle3 VERSION 1.0 LANGUAGES C)
+project(Goggle3 VERSION 1.0 LANGUAGES CXX)
 
-set(CMAKE_C_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_COMPILER clang++)
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+add_definitions(-DGLEW_STATIC)
 
-file(GLOB SOURCES "src/*.c")
+file(GLOB SOURCES "src/*.cpp")
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
@@ -19,4 +21,4 @@ target_link_directories(${PROJECT_NAME} PRIVATE ${FREETYPE_LIBRARY_DIRS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${FREETYPE_LIBRARIES})
 target_compile_options(${PROJECT_NAME} PRIVATE ${SOME_PACKAGE_CFLAGS_OTHER})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE X11 GL)
+target_link_libraries(${PROJECT_NAME} PRIVATE X11 GL GLEW)
