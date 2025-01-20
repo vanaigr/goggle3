@@ -1,6 +1,8 @@
 #include<X11/Xlib.h>
 #include<X11/Xutil.h>
 #include<X11/Xatom.h>
+#include<ft2build.h>
+#include FT_FREETYPE_H
 #include<GL/glx.h>
 #include<stdlib.h>
 #include<stdio.h>
@@ -8,7 +10,9 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
-int main() {
+FT_Library F;
+
+int main(int argc, char **argv) {
     Display *display = XOpenDisplay(NULL);
     if (display == NULL) return 1;
 
@@ -50,6 +54,11 @@ int main() {
     GLXContext c = glXCreateContext(display, visualInfo, NULL, GL_TRUE);
     glXMakeCurrent(display, window, c);
 
+    FT_Init_FreeType(&F);
+
+    FT_Face face;
+    FT_New_Face(F, "/usr/share/fonts/truetype/arial.ttf", 0, &face);
+
     XMapWindow(display, window);
 
     XEvent event;
@@ -64,18 +73,11 @@ int main() {
             }
         }
 
+        glClearColor(0.5, 0.5, 0.5, 1.0);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        glLoadIdentity();
 
-        // Draw something simple (a red triangle)
-        glBegin(GL_TRIANGLES);
-        glColor3f(1.0, 0.0, 0.0);
-        glVertex2f(0.0, 0.5);  // Top vertex
-        glVertex2f(-0.5 + i * 0.1, -0.5); // Bottom left vertex
-        glVertex2f(0.5, -0.5);  // Bottom right vertex
-        glEnd();
-        i = i + 1;
+        glColor3f(0.0f, 0.0f, 1.0f);
 
         glXSwapBuffers(display, window);
     }
