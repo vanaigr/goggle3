@@ -18,8 +18,9 @@ FT_Library F;
 #define var auto
 
 static constexpr int tmp_max_c = 200000;
-static uint8_t tmp[tmp_max_c];
-static int tmp_c;
+static char tmp_buf[tmp_max_c];
+static char *tmp = tmp_buf;
+static char *tmp_end = tmp_buf + tmp_max_c;
 
 using Error = int;
 
@@ -27,10 +28,9 @@ void shaderReport(GLint shader, char const *name = "whatever") {
     GLint res;
     glGetShaderiv(shader, GL_COMPILE_STATUS, &res);
     if(!res) {
-        let beg = tmp + tmp_c;
         GLint len;
-        glGetShaderInfoLog(shader, tmp_max_c - tmp_c, &len, (char*)beg);
-        printf("%s shader said %.*s", name, len, beg);
+        glGetShaderInfoLog(shader, tmp_end - tmp, &len, tmp);
+        printf("%s shader said %.*s", name, len, tmp);
         throw 1;
     }
 }
@@ -39,10 +39,9 @@ void programReport(GLint prog, char const *name = "whatever") {
     GLint res;
     glGetProgramiv(prog, GL_LINK_STATUS, &res);
     if(!res) {
-        let beg = tmp + tmp_c;
         GLint len;
-        glGetProgramInfoLog(prog, tmp_max_c - tmp_c, &len, (char*)beg);
-        printf("%s program said %.*s", name, len, beg);
+        glGetProgramInfoLog(prog, tmp_end - tmp, &len, tmp);
+        printf("%s program said %.*s", name, len, tmp);
         throw 1;
     }
 }
@@ -61,10 +60,24 @@ typedef struct {
     int texture_x, texture_w;
     int texture_left_off;
     int texture_top_off;
+    int glyph_index;
     bool initialized;
 } CharInfo;
 
 static CharInfo chars16[200000];
+
+char *alloc(int size, int align_pow = 0) {
+    var res = (((uintptr_t)tmp >> align_pow) << align_pow);
+    if(res != (uintptr_t)tmp) res += 1 << align_pow;
+
+    tmp = (char*)res + size;
+    return (char*)res;
+}
+
+template<typename T>
+T *talloc(int count) {
+    return (T *)alloc(sizeof(T) * count, 6);
+}
 
 
 int main(int argc, char **argv) {
@@ -125,7 +138,7 @@ int main(int argc, char **argv) {
     FT_Init_FreeType(&F);
 
     FT_Face face;
-    FT_New_Face(F, "/usr/share/fonts/truetype/freefont/FreeSans.ttf", 0, &face);
+    FT_New_Face(F, "/usr/share/fonts/truetype/freefont/FreeSerif.ttf", 0, &face);
     if(FT_Set_Pixel_Sizes(face, 0, 48)) {
         printf("font where?\n");
         return 1;
@@ -148,7 +161,8 @@ int main(int argc, char **argv) {
             return ci;
         }
 
-        if(FT_Load_Char(face, code, FT_LOAD_RENDER)) {
+        int glyph_index = FT_Get_Char_Index(face, code);
+        if(FT_Load_Glyph(face, glyph_index, FT_LOAD_RENDER)) {
             printf("died on %d \n", code);
             ci = chars16[0];
             return ci;
@@ -177,11 +191,12 @@ int main(int argc, char **argv) {
 
 
         ci = CharInfo{
-            .advance = (int)g->linearHoriAdvance,
+            .advance = (int)g->advance.x,
             .texture_x = off,
             .texture_w = (int)b.width,
             .texture_left_off = g->bitmap_left,
             .texture_top_off = g->bitmap_top,
+            .glyph_index = glyph_index,
             .initialized = true,
         };
 
@@ -207,7 +222,7 @@ int main(int argc, char **argv) {
             // note: yes, interpolating to w. Because uv 0 and 1 are edges.
             ivec2 coord = ivec2(mix(vec2(off, size.y), vec2(off + w, 0), uv));
             float alpha = texelFetch(tex, coord, 0).r;
-            result = vec4(vec3(alpha), 1.0);
+            result = vec4(1, 1, 1, alpha);
         }
     )";
     glShaderSource(frag, 1, &frag_src, nullptr);
@@ -253,12 +268,6 @@ int main(int argc, char **argv) {
     programReport(prog);
     ce;
 
-    get_glyph('a');
-    get_glyph('b');
-    get_glyph('o');
-    char text[] = "aboba";
-    ce;
-
     glUseProgram(prog);
     let loc = glGetUniformLocation(prog, "tex");
     glUniform1i(loc, 0);
@@ -270,41 +279,17 @@ int main(int argc, char **argv) {
     let texture0 = glGetAttribLocation(prog, "texture");
     ce;
 
+    let width_fac = 2.0 / width;
+    let height_fac = 2.0 / height;
+
     GLuint va;
     glCreateVertexArrays(1, &va);
     glBindVertexArray(va);
     ce;
 
-    let width_fac = 2.0 / width;
-    let height_fac = 2.0 / height;
-
     GLuint vb;
     glCreateBuffers(1, &vb);
     glBindBuffer(GL_ARRAY_BUFFER, vb);
-    float points[12*5]{};
-    float x = 0;
-    for(int i = 0; i < 5; i++) {
-        let c = text[i];
-        let ci = chars16[c];
-        let left_off = x + ci.texture_left_off;
-        let top_off = 0 + ci.texture_top_off;
-        points[i*12 + 0] = left_off * width_fac;
-        points[i*12 + 1] = top_off * height_fac;
-        points[i*12 + 2] = left_off * width_fac;
-        points[i*12 + 3] = (top_off + 48.0f) * height_fac;
-        points[i*12 + 4] = (left_off + ci.texture_w) * width_fac;
-        points[i*12 + 5] = top_off * height_fac;
-
-        points[i*12 + 6] = left_off * width_fac;
-        points[i*12 + 7] = (top_off + 48.0f) * height_fac;
-        points[i*12 + 8] = (left_off + ci.texture_w) * width_fac;
-        points[i*12 + 9] = top_off * height_fac;
-        points[i*12 + 10] = (left_off + ci.texture_w) * width_fac;
-        points[i*12 + 11] = (top_off + 48.0f) * height_fac;
-
-        x += ci.advance * (1.0f / 65536);
-    }
-    glBufferData(GL_ARRAY_BUFFER, 60 * 4, &points, GL_STATIC_DRAW);
 
     glVertexAttribPointer(coord, 2, GL_FLOAT, false, 8, (void*)0);
     glEnableVertexAttribArray(coord);
@@ -312,47 +297,153 @@ int main(int argc, char **argv) {
     GLuint vb2;
     glCreateBuffers(1, &vb2);
     glBindBuffer(GL_ARRAY_BUFFER, vb2);
-    int textures[12*5]{};
-    for(int i = 0; i < 5; i++) {
-        let c = text[i];
-        let ci = chars16[c];
-        textures[i*12 + 0] = ci.texture_x;
-        textures[i*12 + 2] = ci.texture_x;
-        textures[i*12 + 4] = ci.texture_x;
-        textures[i*12 + 6] = ci.texture_x;
-        textures[i*12 + 8] = ci.texture_x;
-        textures[i*12 + 10] = ci.texture_x;
 
-        textures[i*12 + 1] = ci.texture_w;
-        textures[i*12 + 3] = ci.texture_w;
-        textures[i*12 + 5] = ci.texture_w;
-        textures[i*12 + 7] = ci.texture_w;
-        textures[i*12 + 9] = ci.texture_w;
-        textures[i*12 + 11] = ci.texture_w;
+    if(texture0 > 0) {
+        glVertexAttribIPointer(texture0, 2, GL_INT, 8, (void*)0);
+        glEnableVertexAttribArray(texture0);
     }
-    glBufferData(GL_ARRAY_BUFFER, 60 * 4, &textures, GL_STATIC_DRAW);
 
-    glVertexAttribIPointer(texture0, 2, GL_INT, 8, (void*)0);
-    glEnableVertexAttribArray(texture0);
+    glBindVertexArray(0);
+    ce;
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     XMapWindow(display, window);
 
+    bool keming = true;
+
+    let text = tmp;
+    let text_end = tmp + 256;
+    var text_c = 5;
+    memcpy(text, "aaaaa", 5);
+    tmp += 256;
+
     XEvent event;
-    int i = 0;
     while (1) {
         XNextEvent(display, &event);
         if (event.type == Expose) {
             // Draw something if needed
         } else if (event.type == KeyPress) {
-            if(event.xkey.keycode == 24/* q */) {
+            if(event.xkey.keycode == 24) {
+                // q
                 break;
+            }
+            else if(event.xkey.keycode == 64) {
+                // left alt
+                keming = !keming;
+            }
+            else if(event.xkey.keycode == 22) {
+                // backspace
+                text_c = text_c >= 1 ? text_c - 1 : 0;
+            }
+            else if(event.xkey.keycode == 36) {
+                // enter
+                text[text_c++] = '\n';
+            }
+            else {
+                KeySym keysym;
+                XComposeStatus compose;
+                let p = text + text_c;
+                int len = XLookupString(&event.xkey, p, text_end - p, &keysym, &compose);
+                printf("%d is %.*s\n", event.xkey.keycode, len, p);
+                text_c += len;
             }
         }
 
+        let ptmp = tmp;
+
+        let points = talloc<float>(12 * text_c);
+        let textures = talloc<int>(12 * text_c);
+
+        float x = 0;
+        float y = 0;
+        for(int i = 0; i < text_c; i++) {
+            let c = text[i];
+            if(c == '\n') {
+                x = 0;
+                y -= 52;
+                continue;
+            }
+
+            let ci = get_glyph(c);
+
+            if(i != 0 && keming) {
+                FT_Vector kerning;
+                let error = FT_Get_Kerning(
+                    face,
+                    chars16[text[i-1]].glyph_index,
+                    ci.glyph_index,
+                    FT_KERNING_DEFAULT,
+                    &kerning
+                );
+                x += kerning.x * (1.0f / 64);
+            }
+
+            var left_off = x + ci.texture_left_off;
+            var top_off = y + ci.texture_top_off;
+
+            points[i*12 + 0] = left_off * width_fac;
+            points[i*12 + 1] = top_off * height_fac;
+            points[i*12 + 2] = left_off * width_fac;
+            points[i*12 + 3] = (top_off + 48.0f) * height_fac;
+            points[i*12 + 4] = (left_off + ci.texture_w) * width_fac;
+            points[i*12 + 5] = top_off * height_fac;
+
+            points[i*12 + 6] = left_off * width_fac;
+            points[i*12 + 7] = (top_off + 48.0f) * height_fac;
+            points[i*12 + 8] = (left_off + ci.texture_w) * width_fac;
+            points[i*12 + 9] = top_off * height_fac;
+            points[i*12 + 10] = (left_off + ci.texture_w) * width_fac;
+            points[i*12 + 11] = (top_off + 48.0f) * height_fac;
+
+            x += ci.advance * (1.0f / 64);
+        }
+        glBindBuffer(GL_ARRAY_BUFFER, vb);
+        glBufferData(
+            GL_ARRAY_BUFFER,
+            text_c * 12 * sizeof(float),
+            points,
+            GL_DYNAMIC_DRAW
+        );
+
+        glBindBuffer(GL_ARRAY_BUFFER, vb2);
+        for(int i = 0; i < text_c; i++) {
+            let c = text[i];
+            let ci = chars16[c];
+            textures[i*12 + 0] = ci.texture_x;
+            textures[i*12 + 2] = ci.texture_x;
+            textures[i*12 + 4] = ci.texture_x;
+            textures[i*12 + 6] = ci.texture_x;
+            textures[i*12 + 8] = ci.texture_x;
+            textures[i*12 + 10] = ci.texture_x;
+
+            textures[i*12 + 1] = ci.texture_w;
+            textures[i*12 + 3] = ci.texture_w;
+            textures[i*12 + 5] = ci.texture_w;
+            textures[i*12 + 7] = ci.texture_w;
+            textures[i*12 + 9] = ci.texture_w;
+            textures[i*12 + 11] = ci.texture_w;
+        }
+        glBufferData(
+            GL_ARRAY_BUFFER,
+            text_c * 12 * sizeof(int),
+            textures,
+            GL_DYNAMIC_DRAW
+        );
+        ce;
+
+        glClear(GL_COLOR_BUFFER_BIT);
+
         glUseProgram(prog);
-        glDrawArrays(GL_TRIANGLES, 0, 6*5);
+        glBindVertexArray(va);
+        glDrawArrays(GL_TRIANGLES, 0, 6 * text_c);
+        glBindVertexArray(0);
+        ce;
 
         glXSwapBuffers(display, window);
+        tmp = ptmp;
+        ce;
     }
 
     XDestroyWindow(display, window);
