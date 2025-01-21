@@ -59,6 +59,8 @@ void check_error(int line) {
 typedef struct {
     int advance; // advance width in px
     int texture_x, texture_w;
+    int texture_left_off;
+    int texture_top_off;
     bool initialized;
 } CharInfo;
 
@@ -178,6 +180,8 @@ int main(int argc, char **argv) {
             .advance = (int)g->linearHoriAdvance,
             .texture_x = off,
             .texture_w = (int)b.width,
+            .texture_left_off = g->bitmap_left,
+            .texture_top_off = g->bitmap_top,
             .initialized = true,
         };
 
@@ -271,6 +275,9 @@ int main(int argc, char **argv) {
     glBindVertexArray(va);
     ce;
 
+    let width_fac = 2.0 / width;
+    let height_fac = 2.0 / height;
+
     GLuint vb;
     glCreateBuffers(1, &vb);
     glBindBuffer(GL_ARRAY_BUFFER, vb);
@@ -279,19 +286,21 @@ int main(int argc, char **argv) {
     for(int i = 0; i < 5; i++) {
         let c = text[i];
         let ci = chars16[c];
-        points[i*12 + 0] = (x / width) * 2;
-        points[i*12 + 1] = 0;
-        points[i*12 + 2] = (x / width) * 2;
-        points[i*12 + 3] = (48.0f / height) * 2;
-        points[i*12 + 4] = ((x + ci.texture_w) / width) * 2;
-        points[i*12 + 5] = 0;
+        let left_off = x + ci.texture_left_off;
+        let top_off = 0 + ci.texture_top_off;
+        points[i*12 + 0] = left_off * width_fac;
+        points[i*12 + 1] = top_off * height_fac;
+        points[i*12 + 2] = left_off * width_fac;
+        points[i*12 + 3] = (top_off + 48.0f) * height_fac;
+        points[i*12 + 4] = (left_off + ci.texture_w) * width_fac;
+        points[i*12 + 5] = top_off * height_fac;
 
-        points[i*12 + 6] = (x / width) * 2;
-        points[i*12 + 7] = (48.0f / height) * 2;
-        points[i*12 + 8] = ((x + ci.texture_w) / width) * 2;
-        points[i*12 + 9] = 0;
-        points[i*12 + 10] = ((x + ci.texture_w) / width) * 2;
-        points[i*12 + 11] = (48.0f / height) * 2;
+        points[i*12 + 6] = left_off * width_fac;
+        points[i*12 + 7] = (top_off + 48.0f) * height_fac;
+        points[i*12 + 8] = (left_off + ci.texture_w) * width_fac;
+        points[i*12 + 9] = top_off * height_fac;
+        points[i*12 + 10] = (left_off + ci.texture_w) * width_fac;
+        points[i*12 + 11] = (top_off + 48.0f) * height_fac;
 
         x += ci.advance * (1.0f / 65536);
     }
