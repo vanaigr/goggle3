@@ -1,6 +1,7 @@
 #include<X11/Xlib.h>
 #include<X11/Xutil.h>
 #include<X11/Xatom.h>
+#include <cmath>
 #include<ft2build.h>
 #include FT_FREETYPE_H
 #include<GL/glew.h>
@@ -11,6 +12,8 @@
 #include<string.h>
 #include<stdbool.h>
 #include<algorithm>
+
+#define LCD 1
 
 FT_Library F;
 
@@ -56,10 +59,11 @@ void check_error(int line) {
 #define ce check_error(__LINE__)
 
 typedef struct {
-    int advance; // advance width in px
+    int advance; // 26.6
+    int width; // 26.6
     int texture_x, texture_w;
-    int texture_left_off;
-    int texture_top_off;
+    int texture_left_off; // 26.6
+    int texture_top_off; // 26.6
     int glyph_index;
     bool initialized;
 } CharInfo;
@@ -104,6 +108,8 @@ int main(int argc, char **argv) {
     int width = screen_width - 2*pad;
     int height = screen_height - bot - (what + pad_top) - pad;
 
+    int font_size = 16;
+
     Window window = XCreateSimpleWindow(
         display, RootWindow(display, screen),
         pad, pad_top, width, height,
@@ -138,8 +144,8 @@ int main(int argc, char **argv) {
     FT_Init_FreeType(&F);
 
     FT_Face face;
-    FT_New_Face(F, "/usr/share/fonts/truetype/freefont/FreeSerif.ttf", 0, &face);
-    if(FT_Set_Pixel_Sizes(face, 0, 48)) {
+    FT_New_Face(F, "/usr/share/fonts/truetype/msttcorefonts/Arial.ttf", 0, &face);
+    if(FT_Set_Pixel_Sizes(face, 0, font_size)) {
         printf("font where?\n");
         return 1;
     }
@@ -147,7 +153,11 @@ int main(int argc, char **argv) {
     GLuint texture;
     glCreateTextures(GL_TEXTURE_2D, 1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_R8, 1024, 48);
+#if LCD
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGB8, 1024, font_size);
+#else
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_R8, 1024, font_size);
+#endif
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
@@ -162,7 +172,14 @@ int main(int argc, char **argv) {
         }
 
         int glyph_index = FT_Get_Char_Index(face, code);
-        if(FT_Load_Glyph(face, glyph_index, FT_LOAD_RENDER)) {
+        if(FT_Load_Glyph(
+            face,
+            glyph_index,
+            FT_LOAD_RENDER
+        #if LCD
+                | FT_LOAD_TARGET_LCD
+        #endif
+        )) {
             printf("died on %d \n", code);
             ci = chars16[0];
             return ci;
@@ -171,15 +188,29 @@ int main(int argc, char **argv) {
         let g = face->glyph;
         let b = g->bitmap;
 
+        int gl_texture_w;
 
+    #if LCD
+        gl_texture_w = (int)(b.width / 3);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        glTexSubImage2D(
+            GL_TEXTURE_2D, 0,
+            off, 0, gl_texture_w, b.rows,
+            GL_RGB, GL_UNSIGNED_BYTE,
+            b.buffer
+        );
+    #else
+        gl_texture_w = (int)b.width;
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         glPixelStorei(GL_PACK_ALIGNMENT, 1);
         glTexSubImage2D(
             GL_TEXTURE_2D, 0,
-            off, 0, b.width, b.rows,
+            off, 0, gl_texture_w, b.rows,
             GL_RED, GL_UNSIGNED_BYTE,
             b.buffer
         );
+    #endif
 
         /*for(int i = 0; i < b.rows; i++) {
             for(int j = 0; j < b.width; j++) {
@@ -192,8 +223,9 @@ int main(int argc, char **argv) {
 
         ci = CharInfo{
             .advance = (int)g->advance.x,
+            .width = (int)g->metrics.width,
             .texture_x = off,
-            .texture_w = (int)b.width,
+            .texture_w = (int)gl_texture_w,
             .texture_left_off = g->bitmap_left,
             .texture_top_off = g->bitmap_top,
             .glyph_index = glyph_index,
@@ -220,9 +252,26 @@ int main(int argc, char **argv) {
         void main() {
             ivec2 size = textureSize(tex, 0);
             // note: yes, interpolating to w. Because uv 0 and 1 are edges.
-            ivec2 coord = ivec2(mix(vec2(off, size.y), vec2(off + w, 0), uv));
+            ivec2 coord = ivec2(round(mix(vec2(off, size.y), vec2(off + w, 0), uv)));
+        )"
+    #if LCD
+        R"(
+            vec4 alpha = texelFetch(tex, coord, 0);
+            result = vec4(
+                1 * alpha.r,
+                1 * alpha.g,
+                1 * alpha.b,
+                (alpha.r + alpha.g + alpha.b) * 0.33333
+            );
+            result = vec4(coord.y % 4 * 0.5, 0.0, 0.0, 1.0);
+        )"
+    #else
+        R"(
             float alpha = texelFetch(tex, coord, 0).r;
             result = vec4(1, 1, 1, alpha);
+        )"
+    #endif
+        R"(
         }
     )";
     glShaderSource(frag, 1, &frag_src, nullptr);
@@ -307,7 +356,11 @@ int main(int argc, char **argv) {
     ce;
 
     glEnable(GL_BLEND);
+#if LCD
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+#else
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+#endif
 
     XMapWindow(display, window);
 
@@ -356,17 +409,19 @@ int main(int argc, char **argv) {
         let points = talloc<float>(12 * text_c);
         let textures = talloc<int>(12 * text_c);
 
+        let o6 = 1.0f / 64;
+
         float x = 0;
         float y = 0;
         for(int i = 0; i < text_c; i++) {
             let c = text[i];
+            let ci = get_glyph(c);
             if(c == '\n') {
                 x = 0;
-                y -= 52;
+                y -= font_size * 1.25;
                 continue;
             }
 
-            let ci = get_glyph(c);
 
             if(i != 0 && keming) {
                 FT_Vector kerning;
@@ -377,27 +432,30 @@ int main(int argc, char **argv) {
                     FT_KERNING_DEFAULT,
                     &kerning
                 );
-                x += kerning.x * (1.0f / 64);
+                x += kerning.x * o6;
             }
 
             var left_off = x + ci.texture_left_off;
             var top_off = y + ci.texture_top_off;
 
+            let gw = ci.width * o6;
+            let gh = font_size;
+
             points[i*12 + 0] = left_off * width_fac;
             points[i*12 + 1] = top_off * height_fac;
             points[i*12 + 2] = left_off * width_fac;
-            points[i*12 + 3] = (top_off + 48.0f) * height_fac;
-            points[i*12 + 4] = (left_off + ci.texture_w) * width_fac;
+            points[i*12 + 3] = (top_off + gh) * height_fac;
+            points[i*12 + 4] = (left_off + gw) * width_fac;
             points[i*12 + 5] = top_off * height_fac;
 
             points[i*12 + 6] = left_off * width_fac;
-            points[i*12 + 7] = (top_off + 48.0f) * height_fac;
-            points[i*12 + 8] = (left_off + ci.texture_w) * width_fac;
+            points[i*12 + 7] = (top_off + gh) * height_fac;
+            points[i*12 + 8] = (left_off + gw) * width_fac;
             points[i*12 + 9] = top_off * height_fac;
-            points[i*12 + 10] = (left_off + ci.texture_w) * width_fac;
-            points[i*12 + 11] = (top_off + 48.0f) * height_fac;
+            points[i*12 + 10] = (left_off + gw) * width_fac;
+            points[i*12 + 11] = (top_off + gh) * height_fac;
 
-            x += ci.advance * (1.0f / 64);
+            x += ci.advance * o6;
         }
         glBindBuffer(GL_ARRAY_BUFFER, vb);
         glBufferData(
