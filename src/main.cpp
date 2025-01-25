@@ -12,8 +12,11 @@
 #include<string.h>
 #include<stdbool.h>
 #include<algorithm>
+#include<chrono>
 
-#define LCD 0
+namespace chrono = std::chrono;
+
+#define LCD 1
 
 FT_Library F;
 
@@ -157,7 +160,7 @@ int main(int argc, char **argv) {
     glCreateTextures(GL_TEXTURE_2D, 1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
 #if LCD
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGB8, 1024, font_size);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, 1024, font_size);
 #else
     glTexStorage2D(GL_TEXTURE_2D, 1, GL_R8, 1024, font_size);
 #endif
@@ -250,7 +253,7 @@ int main(int argc, char **argv) {
         layout(local_size_x = 64, local_size_y = 1) in;
         layout(rgba32f, binding = 0) uniform image2D outImg;
 
-        //layout(rgba32f, binding = 1) uniform image2D glyphs;
+        layout(rgba32f, binding = 1) readonly uniform image2D glyphs;
         layout(std430, binding = 2) buffer Characters {
             int data[];
         };
@@ -259,10 +262,15 @@ int main(int argc, char **argv) {
             int groupId = int(gl_WorkGroupID.x);
 
             ivec4 character = ivec4(
-                data[groupId * 4 + 0],
-                data[groupId * 4 + 1],
-                data[groupId * 4 + 2],
-                data[groupId * 4 + 3]
+                data[groupId * 6 + 0],
+                data[groupId * 6 + 1],
+                data[groupId * 6 + 2],
+                data[groupId * 6 + 3]
+            );
+
+            ivec2 texture_off = ivec2(
+                data[groupId * 6 + 4],
+                data[groupId * 6 + 5]
             );
 
             int total = character.b * character.a;
@@ -272,7 +280,28 @@ int main(int argc, char **argv) {
                 int x = off / character.a;
                 int y = off % character.a;
                 ivec2 coord = character.xy + ivec2(x, y);
-                imageStore(outImg, coord, vec4(1, 1, 1, 1));
+                int height = imageSize(glyphs).y;
+        )"
+
+    #if LCD
+        R"(
+                ivec2 glyphs_coord = texture_off + ivec2(x, height-1 - y);
+                vec3 alpha = imageLoad(glyphs, glyphs_coord).rgb;
+
+                vec4 prev_color = imageLoad(outImg, coord);
+                vec4 color = vec4(alpha, 1);//vec4(mix(prev_color.rgb, vec3(1, 1, 1), alpha), 1);
+        )"
+    #else
+        R"(
+                ivec2 glyphs_coord = texture_off + ivec2(x, height-1 - y);
+                float alpha = imageLoad(glyphs, glyphs_coord).r;
+
+                vec4 prev_color = imageLoad(outImg, coord);
+                vec4 color = mix(prev_color, vec4(1, 1, 1, 1), alpha);
+        )"
+        #endif
+        R"(
+                imageStore(outImg, coord, color);
             }
         }
     )";
@@ -435,6 +464,14 @@ int main(int argc, char **argv) {
     }
     ce;
 
+    #if LCD
+    // no docs, no nothing. Guess yourself that images DON'D SUPPORT RGB8, ONLY RGBA8
+    glBindImageTexture(1, texture, 0, false, 0, GL_READ_ONLY, GL_RGBA8);
+    #else
+    glBindImageTexture(1, texture, 0, false, 0, GL_READ_ONLY, GL_R8);
+    #endif
+    ce;
+
     glEnable(GL_BLEND);
 #if LCD
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
@@ -447,12 +484,16 @@ int main(int argc, char **argv) {
     bool keming = true;
 
     let text = tmp;
-    let text_end = tmp + 256;
+    let text_end = tmp + 4096;
     var text_c = 5;
     memcpy(text, "aaaaa", 5);
-    tmp += 256;
+    tmp += 4096;
+
+    var next_redraw = chrono::steady_clock::now();
+    let frame_time = static_cast<chrono::microseconds>(chrono::seconds(1)) / 40;
 
     XEvent event;
+    float xx = 0;
     while (1) {
         XNextEvent(display, &event);
         if (event.type == Expose) {
@@ -484,169 +525,85 @@ int main(int argc, char **argv) {
             }
         }
 
-        let ptmp = tmp;
+        let now = chrono::steady_clock::now();
+        if(now >= next_redraw) {
+            let ptmp = tmp;
 
-        let data = talloc<int32_t>(text_c * 4);
+            let data = talloc<int32_t>(text_c * 6);
 
-        let o6 = 1.0f / 64;
+            let o6 = 1.0f / 64;
 
-        float x = width / 2.0f;
-        float y = height / 2.0f;
-        for(var i = 0; i < text_c; i++) {
-            let c = text[i];
-            let ci = get_glyph(c);
-            if(c == '\n') {
-                x = 0;
-                y -= font_size * 1.25;
-                continue;
+            float x = width / 2.0f + xx;
+            float y = height / 2.0f;
+            for(var i = 0; i < text_c; i++) {
+                let c = text[i];
+                let ci = get_glyph(c);
+                if(c == '\n') {
+                    x = 0;
+                    y -= font_size * 1.25;
+                    continue;
+                }
+
+                if(i != 0 && keming) {
+                    FT_Vector kerning;
+                    let error = FT_Get_Kerning(
+                        face,
+                        chars16[text[i-1]].glyph_index,
+                        ci.glyph_index,
+                        FT_KERNING_DEFAULT,
+                        &kerning
+                    );
+                    x += kerning.x * o6;
+                }
+
+                var left_off = x + ci.texture_left_off;
+                var top_off = y + ci.texture_top_off;
+
+                let gw = ci.width >> 6;
+                let gh = font_size;
+
+                data[i * 6 + 0] = int{ (int)std::floor(left_off) };
+                data[i * 6 + 1] = int{ (int)std::floor(top_off) };
+                data[i * 6 + 2] = int{ gw };
+                data[i * 6 + 3] = int{ gh };
+                data[i * 6 + 4] = int{ ci.texture_x };
+                data[i * 6 + 5] = int{ 0 };
+
+                x += ci.advance * o6;
             }
 
-            if(i != 0 && keming) {
-                FT_Vector kerning;
-                let error = FT_Get_Kerning(
-                    face,
-                    chars16[text[i-1]].glyph_index,
-                    ci.glyph_index,
-                    FT_KERNING_DEFAULT,
-                    &kerning
-                );
-                x += kerning.x * o6;
+            glNamedBufferData(chars_buf, text_c * 6 * sizeof(int32_t), data, GL_DYNAMIC_DRAW);
+            ce;
+
+            glClear(GL_COLOR_BUFFER_BIT);
+
+            ce;
+            glUseProgram(prog);
+            glDispatchCompute(text_c, 1, 1);
+            glMemoryBarrier(GL_ALL_BARRIER_BITS);
+            ce;
+
+            glBlitNamedFramebuffer(
+                fb, 0,
+                0, 0, width, height,
+                0, 0, width, height,
+                GL_COLOR_BUFFER_BIT, GL_NEAREST
+            );
+            ce;
+
+            glXSwapBuffers(display, window);
+            ce;
+
+            tmp = ptmp;
+            xx += 0.5;
+
+            next_redraw += frame_time;
+            if(next_redraw < now && now - next_redraw >= frame_time) {
+                next_redraw = now;
             }
-
-            var left_off = x + ci.texture_left_off;
-            var top_off = y + ci.texture_top_off;
-
-            let gw = ci.width >> 6;
-            let gh = font_size;
-
-            data[i * 4 + 0] = int{ (int)std::floor(x) };
-            data[i * 4 + 1] = int{ (int)std::floor(y) };
-            data[i * 4 + 2] = int{ gw };
-            data[i * 4 + 3] = int{ gh };
-
-            x += ci.advance * o6;
         }
-
-        glNamedBufferData(chars_buf, text_c * 4 * sizeof(int32_t), data, GL_DYNAMIC_DRAW);
-        ce;
-
-        #if 0
-
-        let points = talloc<float>(12 * text_c);
-        let textures = talloc<int>(12 * text_c);
-
-        let o6 = 1.0f / 64;
-
-        float x = 0;
-        float y = 0;
-        for(int i = 0; i < text_c; i++) {
-            let c = text[i];
-            let ci = get_glyph(c);
-            if(c == '\n') {
-                x = 0;
-                y -= font_size * 1.25;
-                continue;
-            }
-
-            if(i != 0 && keming) {
-                FT_Vector kerning;
-                let error = FT_Get_Kerning(
-                    face,
-                    chars16[text[i-1]].glyph_index,
-                    ci.glyph_index,
-                    FT_KERNING_DEFAULT,
-                    &kerning
-                );
-                x += kerning.x * o6;
-            }
-
-            var left_off = x + ci.texture_left_off;
-            var top_off = y + ci.texture_top_off;
-
-            let gw = ci.width * o6;
-            let gh = font_size;
-
-            points[i*12 + 0] = left_off * width_fac;
-            points[i*12 + 1] = top_off * height_fac;
-            points[i*12 + 2] = left_off * width_fac;
-            points[i*12 + 3] = (top_off + gh) * height_fac;
-            points[i*12 + 4] = (left_off + gw) * width_fac;
-            points[i*12 + 5] = top_off * height_fac;
-
-            points[i*12 + 6] = left_off * width_fac;
-            points[i*12 + 7] = (top_off + gh) * height_fac;
-            points[i*12 + 8] = (left_off + gw) * width_fac;
-            points[i*12 + 9] = top_off * height_fac;
-            points[i*12 + 10] = (left_off + gw) * width_fac;
-            points[i*12 + 11] = (top_off + gh) * height_fac;
-
-            x += ci.advance * o6;
-        }
-        glBindBuffer(GL_ARRAY_BUFFER, vb);
-        glBufferData(
-            GL_ARRAY_BUFFER,
-            text_c * 12 * sizeof(float),
-            points,
-            GL_DYNAMIC_DRAW
-        );
-        ce;
-
-        glBindBuffer(GL_ARRAY_BUFFER, vb2);
-        for(int i = 0; i < text_c; i++) {
-            let c = text[i];
-            let ci = chars16[c];
-            textures[i*12 + 0] = ci.texture_x;
-            textures[i*12 + 2] = ci.texture_x;
-            textures[i*12 + 4] = ci.texture_x;
-            textures[i*12 + 6] = ci.texture_x;
-            textures[i*12 + 8] = ci.texture_x;
-            textures[i*12 + 10] = ci.texture_x;
-
-            textures[i*12 + 1] = ci.texture_w;
-            textures[i*12 + 3] = ci.texture_w;
-            textures[i*12 + 5] = ci.texture_w;
-            textures[i*12 + 7] = ci.texture_w;
-            textures[i*12 + 9] = ci.texture_w;
-            textures[i*12 + 11] = ci.texture_w;
-        }
-        glBufferData(
-            GL_ARRAY_BUFFER,
-            text_c * 12 * sizeof(int),
-            textures,
-            GL_DYNAMIC_DRAW
-        );
-        ce;
-
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        glUseProgram(prog);
-        glBindVertexArray(va);
-        glDrawArrays(GL_TRIANGLES, 0, 6 * text_c);
-        glBindVertexArray(0);
-        ce;
-
-        #endif
-
-        ce;
-        glUseProgram(prog);
-glDispatchCompute(100, 1, 1);
-glMemoryBarrier(GL_ALL_BARRIER_BITS);
-        ce;
-
-        glBlitNamedFramebuffer(
-            fb, 0,
-            0, 0, width, height,
-            0, 0, width, height,
-            GL_COLOR_BUFFER_BIT, GL_NEAREST
-        );
-        ce;
-
-        glXSwapBuffers(display, window);
-        tmp = ptmp;
-        ce;
     }
 
     XDestroyWindow(display, window);
     XCloseDisplay(display);
-    return 0;
 }
