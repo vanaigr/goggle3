@@ -583,12 +583,16 @@ int main(int argc, char **argv) {
             glMemoryBarrier(GL_ALL_BARRIER_BITS);
             ce;
 
+            // what is even the point of BlitNamed if I must unbind
+            // the framebuffer before using it??
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
             glBlitNamedFramebuffer(
                 fb, 0,
                 0, 0, width, height,
                 0, 0, width, height,
                 GL_COLOR_BUFFER_BIT, GL_NEAREST
             );
+            glBindFramebuffer(GL_FRAMEBUFFER, fb);
             ce;
 
             glXSwapBuffers(display, window);
