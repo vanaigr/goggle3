@@ -250,9 +250,30 @@ int main(int argc, char **argv) {
         layout(local_size_x = 64, local_size_y = 1) in;
         layout(rgba32f, binding = 0) uniform image2D outImg;
 
+        //layout(rgba32f, binding = 1) uniform image2D glyphs;
+        layout(std430, binding = 2) buffer Characters {
+            int data[];
+        };
+
         void main() {
-            int id = int(gl_GlobalInvocationID.x);
-            imageStore(outImg, ivec2(id / 64, id % 64), vec4(1, 1, 1, 1));
+            int groupId = int(gl_WorkGroupID.x);
+
+            ivec4 character = ivec4(
+                data[groupId * 4 + 0],
+                data[groupId * 4 + 1],
+                data[groupId * 4 + 2],
+                data[groupId * 4 + 3]
+            );
+
+            int total = character.b * character.a;
+
+            int off = int(gl_LocalInvocationIndex.x);
+            for(; off < total; off += 64) {
+                int x = off / character.a;
+                int y = off % character.a;
+                ivec2 coord = character.xy + ivec2(x, y);
+                imageStore(outImg, coord, vec4(1, 1, 1, 1));
+            }
         }
     )";
 
@@ -340,6 +361,12 @@ int main(int argc, char **argv) {
     glAttachShader(prog, compute);
     glLinkProgram(prog);
     programReport(prog);
+    ce;
+
+    GLuint chars_buf;
+    glCreateBuffers(1, &chars_buf);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, chars_buf);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, chars_buf);
     ce;
 
     glUseProgram(prog);
@@ -459,6 +486,50 @@ int main(int argc, char **argv) {
 
         let ptmp = tmp;
 
+        let data = talloc<int32_t>(text_c * 4);
+
+        let o6 = 1.0f / 64;
+
+        float x = width / 2.0f;
+        float y = height / 2.0f;
+        for(var i = 0; i < text_c; i++) {
+            let c = text[i];
+            let ci = get_glyph(c);
+            if(c == '\n') {
+                x = 0;
+                y -= font_size * 1.25;
+                continue;
+            }
+
+            if(i != 0 && keming) {
+                FT_Vector kerning;
+                let error = FT_Get_Kerning(
+                    face,
+                    chars16[text[i-1]].glyph_index,
+                    ci.glyph_index,
+                    FT_KERNING_DEFAULT,
+                    &kerning
+                );
+                x += kerning.x * o6;
+            }
+
+            var left_off = x + ci.texture_left_off;
+            var top_off = y + ci.texture_top_off;
+
+            let gw = ci.width >> 6;
+            let gh = font_size;
+
+            data[i * 4 + 0] = int{ (int)std::floor(x) };
+            data[i * 4 + 1] = int{ (int)std::floor(y) };
+            data[i * 4 + 2] = int{ gw };
+            data[i * 4 + 3] = int{ gh };
+
+            x += ci.advance * o6;
+        }
+
+        glNamedBufferData(chars_buf, text_c * 4 * sizeof(int32_t), data, GL_DYNAMIC_DRAW);
+        ce;
+
         #if 0
 
         let points = talloc<float>(12 * text_c);
@@ -476,7 +547,6 @@ int main(int argc, char **argv) {
                 y -= font_size * 1.25;
                 continue;
             }
-
 
             if(i != 0 && keming) {
                 FT_Vector kerning;
