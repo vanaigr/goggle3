@@ -13,7 +13,7 @@
 #include<stdbool.h>
 #include<algorithm>
 
-#define LCD 1
+#define LCD 0
 
 FT_Library F;
 
@@ -34,6 +34,7 @@ void shaderReport(GLint shader, char const *name = "whatever") {
         GLint len;
         glGetShaderInfoLog(shader, tmp_end - tmp, &len, tmp);
         printf("%s shader said %.*s", name, len, tmp);
+        fflush(stdout);
         throw 1;
     }
 }
@@ -45,6 +46,7 @@ void programReport(GLint prog, char const *name = "whatever") {
         GLint len;
         glGetProgramInfoLog(prog, tmp_end - tmp, &len, tmp);
         printf("%s program said %.*s", name, len, tmp);
+        fflush(stdout);
         throw 1;
     }
 }
@@ -53,6 +55,7 @@ void check_error(int line) {
     GLint err = glGetError();
     if(err) {
         printf("[%d] What is %d\n", line, err);
+        fflush(stdout);
         throw 1;
     }
 }
@@ -240,6 +243,20 @@ int main(int argc, char **argv) {
     };
 
     let prog = glCreateProgram();
+    let compute = glCreateShader(GL_COMPUTE_SHADER);
+    let compute_src = R"(
+        #version 440
+
+        layout(local_size_x = 64, local_size_y = 1) in;
+        layout(rgba32f, binding = 0) uniform image2D outImg;
+
+        void main() {
+            int id = int(gl_GlobalInvocationID.x);
+            imageStore(outImg, ivec2(id / 64, id % 64), vec4(1, 1, 1, 1));
+        }
+    )";
+
+    #if 0
     let frag = glCreateShader(GL_FRAGMENT_SHADER);
     let frag_src = R"(
         #version 440
@@ -314,11 +331,19 @@ int main(int argc, char **argv) {
 
     glAttachShader(prog, frag);
     glAttachShader(prog, vert);
+    #endif
+
+    glShaderSource(compute, 1, &compute_src, nullptr);
+    glCompileShader(compute);
+    shaderReport(compute, "compute");
+
+    glAttachShader(prog, compute);
     glLinkProgram(prog);
     programReport(prog);
     ce;
 
     glUseProgram(prog);
+    #if 0
     let loc = glGetUniformLocation(prog, "tex");
     glUniform1i(loc, 0);
     ce;
@@ -328,10 +353,15 @@ int main(int argc, char **argv) {
 
     let texture0 = glGetAttribLocation(prog, "texture");
     ce;
+    #endif
+
+    let loc = glGetUniformLocation(prog, "outImg");
+    glUniform1i(loc, 0);
 
     let width_fac = 2.0 / width;
     let height_fac = 2.0 / height;
 
+    #if 0
     GLuint va;
     glCreateVertexArrays(1, &va);
     glBindVertexArray(va);
@@ -355,7 +385,7 @@ int main(int argc, char **argv) {
 
     glBindVertexArray(0);
     ce;
-
+    #endif
 
     GLuint fb;
     glGenFramebuffers(1, &fb);
@@ -368,6 +398,8 @@ int main(int argc, char **argv) {
     glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, screen_width, screen_height);
     ce;
 
+    glBindImageTexture(0, fb_tex, 0, false, 0, GL_READ_WRITE, GL_RGBA8);
+    ce;
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, fb_tex, 0);
 
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
@@ -426,6 +458,8 @@ int main(int argc, char **argv) {
         }
 
         let ptmp = tmp;
+
+        #if 0
 
         let points = talloc<float>(12 * text_c);
         let textures = talloc<int>(12 * text_c);
@@ -519,6 +553,14 @@ int main(int argc, char **argv) {
         glBindVertexArray(va);
         glDrawArrays(GL_TRIANGLES, 0, 6 * text_c);
         glBindVertexArray(0);
+        ce;
+
+        #endif
+
+        ce;
+        glUseProgram(prog);
+glDispatchCompute(100, 1, 1);
+glMemoryBarrier(GL_ALL_BARRIER_BITS);
         ce;
 
         glBlitNamedFramebuffer(
