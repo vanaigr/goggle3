@@ -161,6 +161,8 @@ int main(int argc, char **argv) {
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
+    // why????? why can't I just unactivate the texture?
+    glActiveTexture(GL_TEXTURE0 + 79);
 
     ce;
 
@@ -194,8 +196,8 @@ int main(int argc, char **argv) {
         gl_texture_w = (int)(b.width / 3);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
         glPixelStorei(GL_PACK_ALIGNMENT, 4);
-        glTexSubImage2D(
-            GL_TEXTURE_2D, 0,
+        glTextureSubImage2D(
+            texture, 0,
             off, 0, gl_texture_w, b.rows,
             GL_RGB, GL_UNSIGNED_BYTE,
             b.buffer
@@ -204,8 +206,8 @@ int main(int argc, char **argv) {
         gl_texture_w = (int)b.width;
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glTexSubImage2D(
-            GL_TEXTURE_2D, 0,
+        glTextureSubImage2D(
+            texture, 0,
             off, 0, gl_texture_w, b.rows,
             GL_RED, GL_UNSIGNED_BYTE,
             b.buffer
@@ -263,7 +265,6 @@ int main(int argc, char **argv) {
                 1 * alpha.b,
                 (alpha.r + alpha.g + alpha.b) * 0.33333
             );
-            result = vec4(coord.y % 4 * 0.5, 0.0, 0.0, 1.0);
         )"
     #else
         R"(
@@ -353,6 +354,26 @@ int main(int argc, char **argv) {
     }
 
     glBindVertexArray(0);
+    ce;
+
+
+    GLuint fb;
+    glGenFramebuffers(1, &fb);
+    glBindFramebuffer(GL_FRAMEBUFFER, fb);
+    ce;
+
+    GLuint fb_tex;
+    glGenTextures(1, &fb_tex);
+    glBindTexture(GL_TEXTURE_2D, fb_tex);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, screen_width, screen_height);
+    ce;
+
+    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, fb_tex, 0);
+
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        printf("Framebuffer is not complete\n");
+        return 1;
+    }
     ce;
 
     glEnable(GL_BLEND);
@@ -464,6 +485,7 @@ int main(int argc, char **argv) {
             points,
             GL_DYNAMIC_DRAW
         );
+        ce;
 
         glBindBuffer(GL_ARRAY_BUFFER, vb2);
         for(int i = 0; i < text_c; i++) {
@@ -497,6 +519,14 @@ int main(int argc, char **argv) {
         glBindVertexArray(va);
         glDrawArrays(GL_TRIANGLES, 0, 6 * text_c);
         glBindVertexArray(0);
+        ce;
+
+        glBlitNamedFramebuffer(
+            fb, 0,
+            0, 0, width, height,
+            0, 0, width, height,
+            GL_COLOR_BUFFER_BIT, GL_NEAREST
+        );
         ce;
 
         glXSwapBuffers(display, window);
