@@ -66,7 +66,6 @@ void check_error(int line) {
 
 typedef struct {
     int advance; // 26.6
-    int width; // 26.6
     int texture_x, texture_w;
     int texture_left_off; // 26.6
     int texture_top_off; // 26.6
@@ -220,18 +219,24 @@ int main(int argc, char **argv) {
         );
     #endif
 
-        /*for(int i = 0; i < b.rows; i++) {
+        /* char const *chars = "rgb";
+        for(int i = 0; i < b.rows; i++) {
+
             for(int j = 0; j < b.width; j++) {
-                printf("%c", b.buffer[i * b.width + j] ? '#' : ' ');
+                if(j % 3 == 0) printf("|");
+                printf("%c", b.buffer[i * b.pitch + j] ? chars[j % 3] : ' ');
             }
             printf("\n");
         }
-            printf("\n");*/
+        printf("\n"); */
 
+        // why does this exist, and why is it not correct
+        // and crops the character? Shouldn't this be the
+        // of pixels in the bitmap horizontally?
+        // .width = (int)g->metrics.width,
 
         ci = CharInfo{
             .advance = (int)g->advance.x,
-            .width = (int)g->metrics.width,
             .texture_x = off,
             .texture_w = (int)gl_texture_w,
             .texture_left_off = g->bitmap_left,
@@ -251,7 +256,7 @@ int main(int argc, char **argv) {
         #version 440
 
         layout(local_size_x = 64, local_size_y = 1) in;
-        layout(rgba32f, binding = 0) uniform image2D outImg;
+        layout(rgba32f, binding = 0) coherent uniform image2D outImg;
 
         layout(rgba32f, binding = 1) readonly uniform image2D glyphs;
         layout(std430, binding = 2) buffer Characters {
@@ -288,100 +293,31 @@ int main(int argc, char **argv) {
                 ivec2 glyphs_coord = texture_off + ivec2(x, height-1 - y);
                 vec3 alpha = imageLoad(glyphs, glyphs_coord).rgb;
 
-                vec4 prev_color = imageLoad(outImg, coord);
-                vec4 color = vec4(alpha, 1);//vec4(mix(prev_color.rgb, vec3(1, 1, 1), alpha), 1);
+                // hack (more or less). If glyphs intersect, we may overwrite
+                // their color with transparent. Ideally should copmareExchange
+                // values.
+                if(any(greaterThan(alpha, vec3(0)))) {
+                    vec4 prev_color = imageLoad(outImg, coord);
+                    vec4 color = vec4(mix(prev_color.rgb, vec3(1, 1, 1), alpha), 1);
+                    imageStore(outImg, coord, color);
+                }
         )"
     #else
         R"(
                 ivec2 glyphs_coord = texture_off + ivec2(x, height-1 - y);
                 float alpha = imageLoad(glyphs, glyphs_coord).r;
 
-                vec4 prev_color = imageLoad(outImg, coord);
-                vec4 color = mix(prev_color, vec4(1, 1, 1, 1), alpha);
+                if(alpha > 0) {
+                    vec4 prev_color = imageLoad(outImg, coord);
+                    vec4 color = mix(prev_color, vec4(1, 1, 1, 1), alpha);
+                    imageStore(outImg, coord, color);
+                }
         )"
-        #endif
+    #endif
         R"(
-                imageStore(outImg, coord, color);
             }
         }
     )";
-
-    #if 0
-    let frag = glCreateShader(GL_FRAGMENT_SHADER);
-    let frag_src = R"(
-        #version 440
-        uniform sampler2D tex;
-
-        flat in int off;
-        flat in int w;
-        in vec2 uv;
-
-        out vec4 result;
-
-        void main() {
-            ivec2 size = textureSize(tex, 0);
-            // note: yes, interpolating to w. Because uv 0 and 1 are edges.
-            ivec2 coord = ivec2(round(mix(vec2(off, size.y), vec2(off + w, 0), uv)));
-        )"
-    #if LCD
-        R"(
-            vec4 alpha = texelFetch(tex, coord, 0);
-            result = vec4(
-                1 * alpha.r,
-                1 * alpha.g,
-                1 * alpha.b,
-                (alpha.r + alpha.g + alpha.b) * 0.33333
-            );
-        )"
-    #else
-        R"(
-            float alpha = texelFetch(tex, coord, 0).r;
-            result = vec4(1, 1, 1, alpha);
-        )"
-    #endif
-        R"(
-        }
-    )";
-    glShaderSource(frag, 1, &frag_src, nullptr);
-
-    let vert = glCreateShader(GL_VERTEX_SHADER);
-    let vert_src = R"(
-        #version 440
-
-        in vec2 coord;
-        in ivec2 texture;
-
-        out vec2 uv;
-        flat out int off;
-        flat out int w;
-
-        vec2 points[6] = {
-            vec2(0, 0),
-            vec2(0, 1),
-            vec2(1, 0),
-            vec2(0, 1),
-            vec2(1, 0),
-            vec2(1, 1)
-        };
-
-        void main() {
-            uv = points[gl_VertexID % 6];
-            off = texture[0];
-            w = texture[1];
-            gl_Position = vec4(coord, 0.0, 1.0);
-        }
-    )";
-    glShaderSource(vert, 1, &vert_src, nullptr);
-
-    glCompileShader(frag);
-    glCompileShader(vert);
-
-    shaderReport(vert, "vertex");
-    shaderReport(frag, "fragment");
-
-    glAttachShader(prog, frag);
-    glAttachShader(prog, vert);
-    #endif
 
     glShaderSource(compute, 1, &compute_src, nullptr);
     glCompileShader(compute);
@@ -399,49 +335,12 @@ int main(int argc, char **argv) {
     ce;
 
     glUseProgram(prog);
-    #if 0
-    let loc = glGetUniformLocation(prog, "tex");
-    glUniform1i(loc, 0);
-    ce;
-
-    let coord = glGetAttribLocation(prog, "coord");
-    ce;
-
-    let texture0 = glGetAttribLocation(prog, "texture");
-    ce;
-    #endif
 
     let loc = glGetUniformLocation(prog, "outImg");
     glUniform1i(loc, 0);
 
     let width_fac = 2.0 / width;
     let height_fac = 2.0 / height;
-
-    #if 0
-    GLuint va;
-    glCreateVertexArrays(1, &va);
-    glBindVertexArray(va);
-    ce;
-
-    GLuint vb;
-    glCreateBuffers(1, &vb);
-    glBindBuffer(GL_ARRAY_BUFFER, vb);
-
-    glVertexAttribPointer(coord, 2, GL_FLOAT, false, 8, (void*)0);
-    glEnableVertexAttribArray(coord);
-
-    GLuint vb2;
-    glCreateBuffers(1, &vb2);
-    glBindBuffer(GL_ARRAY_BUFFER, vb2);
-
-    if(texture0 > 0) {
-        glVertexAttribIPointer(texture0, 2, GL_INT, 8, (void*)0);
-        glEnableVertexAttribArray(texture0);
-    }
-
-    glBindVertexArray(0);
-    ce;
-    #endif
 
     GLuint fb;
     glGenFramebuffers(1, &fb);
@@ -493,7 +392,6 @@ int main(int argc, char **argv) {
     let frame_time = static_cast<chrono::microseconds>(chrono::seconds(1)) / 40;
 
     XEvent event;
-    float xx = 0;
     while (1) {
         XNextEvent(display, &event);
         if (event.type == Expose) {
@@ -533,7 +431,7 @@ int main(int argc, char **argv) {
 
             let o6 = 1.0f / 64;
 
-            float x = width / 2.0f + xx;
+            float x = width / 2.0f;
             float y = height / 2.0f;
             for(var i = 0; i < text_c; i++) {
                 let c = text[i];
@@ -559,7 +457,7 @@ int main(int argc, char **argv) {
                 var left_off = x + ci.texture_left_off;
                 var top_off = y + ci.texture_top_off;
 
-                let gw = ci.width >> 6;
+                let gw = ci.texture_w;
                 let gh = font_size;
 
                 data[i * 6 + 0] = int{ (int)std::floor(left_off) };
@@ -599,7 +497,6 @@ int main(int argc, char **argv) {
             ce;
 
             tmp = ptmp;
-            xx += 0.5;
 
             next_redraw += frame_time;
             if(next_redraw < now && now - next_redraw >= frame_time) {
