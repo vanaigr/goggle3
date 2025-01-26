@@ -147,7 +147,10 @@ int main(int argc, char **argv) {
 
         let now = chrono::steady_clock::now();
         if(now >= next_redraw) {
+            glClear(GL_COLOR_BUFFER_BIT);
+
             text_draw(text, text_c, 24, width / 2, height / 2, width);
+            text_draw(text, text_c, 48, width / 4, height / 8 * 5, width);
 
             // what is even the point of BlitNamed if I must unbind
             // the framebuffer before using it??

@@ -3,6 +3,8 @@
 #include<GL/glew.h>
 #include<GL/glx.h>
 #include<cmath>
+#include<array>
+#include<unordered_map>
 
 #include"defs.h"
 #include"alloc.h"
@@ -10,73 +12,56 @@
 #define LCD 1
 
 static FT_Library F;
-static FT_Face face;
-static GLuint texture;
+static GLuint glyph_buf;
 static GLuint chars_buf;
 static GLuint prog;
 
 static int const font_size = 24;
 
-typedef struct {
-    int texture_w, texure_h;
-    int texture_x;
+static struct {
+    GLuint buf;
+    int size;
+    int cap;
+} glyphs;
+
+struct CharInfo {
+    int glyphs_off;
+    int width, height;
     int glyph_index;
     int16_t left_off;
     int16_t top_off;
     int16_t advance;
     bool initialized;
-} CharInfo;
+};
 
-static CharInfo chars16[200000];
+constexpr int chars_bucket_shift = 8;
+using CharsBucket = std::array<CharInfo, 1 << chars_bucket_shift>;
+using Chars = std::array<CharsBucket*, 600>;
 
-static var off = chars16[0].texture_w;
+struct FontInfo {
+    FT_Face face;
+    Chars chars;
+};
 
+// by font size
+static std::unordered_map<int, FontInfo*> fonts{};
 
-void shaderReport(GLint shader, char const *name = "whatever") {
-    GLint res;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &res);
-    if(!res) {
-        GLint len;
-        glGetShaderInfoLog(shader, tmp_end - tmp, &len, tmp);
-        printf("%s shader said %.*s", name, len, tmp);
-        fflush(stdout);
-        throw 1;
+FontInfo *get_font_info(int font_size) {
+    var &f = fonts[font_size];
+    if(f == nullptr) {
+        f = new FontInfo{};
+        FT_New_Face(F, "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0, &f->face);
+        if(FT_Set_Pixel_Sizes(f->face, 0, font_size)) {
+            printf("font where?\n");
+            throw 1;
+        }
     }
-}
 
-void programReport(GLint prog, char const *name = "whatever") {
-    GLint res;
-    glGetProgramiv(prog, GL_LINK_STATUS, &res);
-    if(!res) {
-        GLint len;
-        glGetProgramInfoLog(prog, tmp_end - tmp, &len, tmp);
-        printf("%s program said %.*s", name, len, tmp);
-        fflush(stdout);
-        throw 1;
-    }
+    return f;
 }
 
 int text_init() {
     FT_Init_FreeType(&F);
-
-    FT_New_Face(F, "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0, &face);
-    if(FT_Set_Pixel_Sizes(face, 0, font_size)) {
-        printf("font where?\n");
-        return 1;
-    }
-
-    glCreateTextures(GL_TEXTURE_2D, 1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
-#if LCD
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, 1024, font_size);
-#else
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_R8, 1024, font_size);
-#endif
-
-    glActiveTexture(GL_TEXTURE0 + 1);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    // why????? why can't I just unactivate the texture?
-    glActiveTexture(GL_TEXTURE0);
 
     glCreateBuffers(1, &chars_buf);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, chars_buf);
@@ -90,9 +75,12 @@ int text_init() {
         layout(local_size_x = 64, local_size_y = 1) in;
         layout(rgba32f, binding = 1) coherent uniform image2D outImg;
 
-        layout(rgba32f, binding = 2) readonly uniform image2D glyphs;
         layout(std430, binding = 1) buffer Characters {
+            // who needs structs if they must be aligned?
             int data[];
+        };
+        layout(std430, binding = 2) readonly buffer Glyphs {
+            uint glyph_data[];
         };
 
         void main() {
@@ -105,25 +93,23 @@ int text_init() {
                 data[groupId * 6 + 3]
             );
 
-            ivec2 texture_off = ivec2(
-                data[groupId * 6 + 4],
-                data[groupId * 6 + 5]
-            );
+            int glyphs_off = data[groupId * 6 + 4];
 
             int total = character.b * character.a;
 
             int off = int(gl_LocalInvocationIndex.x);
             for(; off < total; off += 64) {
-                int x = off / character.a;
-                int y = off % character.a;
+                int x = off % character.b;
+                int y = off / character.b;
                 ivec2 coord = character.xy + ivec2(x, y);
-                int height = imageSize(glyphs).y;
-        )"
+    )"
 
     #if LCD
-        R"(
-                ivec2 glyphs_coord = texture_off + ivec2(x, character.a-1 - y);
-                vec3 alpha = imageLoad(glyphs, glyphs_coord).rgb;
+    R"(
+                int this_off = glyphs_off + off;
+                uint rgb = glyph_data[this_off];
+                vec3 alpha = vec3(rgb & 255u, (rgb >> 8u) & 255u, (rgb >> 16u) & 255u);
+                alpha *= 1.0 / 255.0;
 
                 // hack (more or less). If glyphs intersect, we may overwrite
                 // their color with transparent. Ideally should copmareExchange
@@ -133,7 +119,7 @@ int text_init() {
                     vec4 color = vec4(mix(prev_color.rgb, vec3(1, 1, 1), alpha), 1);
                     imageStore(outImg, coord, color);
                 }
-        )"
+    )"
     #else
         R"(
                 ivec2 glyphs_coord = texture_off + ivec2(x, height-1 - y);
@@ -144,9 +130,9 @@ int text_init() {
                     vec4 color = mix(prev_color, vec4(1, 1, 1, 1), alpha);
                     imageStore(outImg, coord, color);
                 }
-        )"
+    )"
     #endif
-        R"(
+    R"(
             }
         }
     )";
@@ -166,14 +152,6 @@ int text_init() {
     let loc = glGetUniformLocation(prog, "outImg");
     glUniform1i(loc, 1);
 
-    #if LCD
-    // no docs, no nothing. Guess yourself that images DON'T SUPPORT RGB8, ONLY RGBA8
-    glBindImageTexture(2, texture, 0, false, 0, GL_READ_ONLY, GL_RGBA8);
-    #else
-    glBindImageTexture(2, texture, 0, false, 0, GL_READ_ONLY, GL_R8);
-    #endif
-    ce;
-
     return 0;
 }
 
@@ -181,15 +159,68 @@ void text_bind_texture(GLint tex) {
     glBindImageTexture(1, tex, 0, false, 0, GL_READ_WRITE, GL_RGBA8);
 }
 
-static CharInfo get_glyph(int code) {
-    var &ci = chars16[code];
+// returns uint32_t index
+static int glyphs_add(int byte_count, char const *data) {
+    int uints_count = ((byte_count >> 2) + (byte_count & ((1 << 2) - 1)));
+
+    // force init even if byte_count is 0.
+    // Not that this would ever happen, but this is correct behavior.
+    if(glyphs.cap == 0) {
+        GLuint buf;
+        glGenBuffers(1, &buf);
+
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, buf);
+
+        let cap = std::max(1 << 12, uints_count);
+        glNamedBufferData(buf, cap * 4, nullptr, GL_DYNAMIC_DRAW);
+
+        glyphs.buf = buf;
+        glyphs.size = uints_count;
+        glyphs.cap = cap;
+    }
+    else if(glyphs.cap - glyphs.size < uints_count) {
+        let ptmp = tmp;
+
+        var new_cap = glyphs.cap << 1;
+        while(new_cap - glyphs.size < uints_count) new_cap <<= 1;
+
+        let space = talloc<uint32_t>(glyphs.size);
+        glGetNamedBufferSubData(glyphs.buf, 0, glyphs.size * 4, space);
+
+        glNamedBufferData(glyphs.buf, new_cap * 4, nullptr, GL_DYNAMIC_DRAW);
+        glNamedBufferSubData(glyphs.buf, 0, glyphs.size * 4, space);
+
+        glyphs.cap = new_cap;
+
+        tmp = ptmp;
+    }
+
+    let off = glyphs.size;
+    glNamedBufferSubData(glyphs.buf, off * 4, byte_count, data);
+    glyphs.size += uints_count;
+
+    return off;
+}
+
+static CharInfo get_glyph(FontInfo *font_info, int code) {
+    var &fi = *font_info;
+
+    let bucket_i = code >> chars_bucket_shift;
+    let in_bucket_i = code & ((1 << chars_bucket_shift) - 1);
+    var bucket = fi.chars[bucket_i];
+    if(!bucket) {
+        bucket = new CharsBucket{};
+        fi.chars[bucket_i] = bucket;
+    }
+
+    var &ci = (*bucket)[in_bucket_i];
     if(ci.initialized) {
         return ci;
     }
 
-    int glyph_index = FT_Get_Char_Index(face, code);
+    int glyph_index = FT_Get_Char_Index(fi.face, code);
     if(FT_Load_Glyph(
-        face,
+        fi.face,
         glyph_index,
         FT_LOAD_RENDER
     #if LCD
@@ -198,10 +229,13 @@ static CharInfo get_glyph(int code) {
     )) {
         printf("died on %d \n", code);
 
+        char empty;
+        glyphs_add(0, &empty);
+
         ci = CharInfo{
-            .texture_w = 0,
-            .texure_h = 0,
-            .texture_x = 0,
+            .glyphs_off = 0,
+            .width = 0,
+            .height = 0,
             .glyph_index = glyph_index,
             .left_off = 0,
             .top_off = 0,
@@ -211,31 +245,37 @@ static CharInfo get_glyph(int code) {
         return ci;
     }
 
-    let g = face->glyph;
+    let g = fi.face->glyph;
     let b = g->bitmap;
 
-    int gl_texture_w;
-
+    int texture_w;
 #if LCD
-    gl_texture_w = (int)(b.width / 3);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    glPixelStorei(GL_PACK_ALIGNMENT, 4);
-    glTextureSubImage2D(
-        texture, 0,
-        off, 0, gl_texture_w, b.rows,
-        GL_RGB, GL_UNSIGNED_BYTE,
-        b.buffer
-    );
+    let ptmp = tmp;
+    texture_w = b.width / 3;
+    let texture_c = texture_w * b.rows;
+    let ptr_base = talloc<uint32_t>(texture_c);
+
+    var bmp_row_off = 0;
+    for(var y = b.rows - 1; y != -1; y--) {
+        var bmp_off = bmp_row_off;
+        for(var x = 0; x < texture_w; x++) {
+            let re = b.buffer[bmp_off];
+            let gr = b.buffer[bmp_off + 1];
+            let bl = b.buffer[bmp_off + 2];
+            ptr_base[y * texture_w + x] = (re) | (gr << 8) | (bl << 16);
+            bmp_off += 3;
+        }
+        bmp_row_off += b.pitch;
+    }
+
+    let off = glyphs_add(4 * texture_c, (char*)ptr_base);
+
+    tmp = ptmp;
 #else
-    gl_texture_w = (int)b.width;
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glTextureSubImage2D(
-        texture, 0,
-        off, 0, gl_texture_w, b.rows,
-        GL_RED, GL_UNSIGNED_BYTE,
-        b.buffer
-    );
+// todo: reverse
+    texture_w = b.width;
+    let texture_c = texture_w * b.rows;
+    let off = glyphs_add(texture_c, (char*)b.buffer);
 #endif
 
     /* char const *chars = "rgb";
@@ -255,9 +295,9 @@ static CharInfo get_glyph(int code) {
     // .width = (int)g->metrics.width,
 
     ci = CharInfo{
-        .texture_w = (int)gl_texture_w,
-        .texure_h = (int)b.rows,
-        .texture_x = off,
+        .glyphs_off = off,
+        .width = (int)texture_w,
+        .height = (int)b.rows,
         .glyph_index = glyph_index,
         .left_off = (int16_t)(g->bitmap_left),
         .top_off = (int16_t)(g->bitmap_top),
@@ -265,32 +305,43 @@ static CharInfo get_glyph(int code) {
         .initialized = true,
     };
 
-    off += gl_texture_w;
-
     return ci;
 }
 
-void text_draw(char *text, int text_c, int font_size, int x, int y, int max_width) {
+void text_draw(
+    char const *text,
+    int text_c,
+    int font_size,
+    int begin_x,
+    int begin_y,
+    int max_width
+) {
     let ptmp = tmp;
+
+    let fi = get_font_info(font_size);
 
     let data = talloc<int32_t>(text_c * 6);
 
     var charCount = 0;
+    var prev_glyph_index = 0;
 
+    var x = begin_x;
+    var y = begin_y;
     for(var i = 0; i < text_c; i++) {
         let c = text[i];
-        let ci = get_glyph(c);
+        let ci = get_glyph(fi, c);
         if(c == '\n') {
-            x = 0;
+            x = begin_x;
             y -= font_size * 1.25;
+            prev_glyph_index = 0;
             continue;
         }
 
-        if(i != 0) {
+        if(prev_glyph_index != 0) {
             FT_Vector kerning;
             let error = FT_Get_Kerning(
-                face,
-                chars16[text[i-1]].glyph_index,
+                fi->face,
+                prev_glyph_index,
                 ci.glyph_index,
                 FT_KERNING_DEFAULT,
                 &kerning
@@ -299,11 +350,10 @@ void text_draw(char *text, int text_c, int font_size, int x, int y, int max_widt
         }
 
         data[charCount * 6 + 0] = int{ x + ci.left_off };
-        data[charCount * 6 + 1] = int{ y + ci.top_off - ci.texure_h };
-        data[charCount * 6 + 2] = int{ ci.texture_w };
-        data[charCount * 6 + 3] = int{ ci.texure_h };
-        data[charCount * 6 + 4] = int{ ci.texture_x };
-        data[charCount * 6 + 5] = int{ 0 };
+        data[charCount * 6 + 1] = int{ y + ci.top_off - ci.height };
+        data[charCount * 6 + 2] = int{ ci.width };
+        data[charCount * 6 + 3] = int{ ci.height };
+        data[charCount * 6 + 4] = int{ ci.glyphs_off };
         charCount++;
 
         x += ci.advance;
@@ -311,8 +361,6 @@ void text_draw(char *text, int text_c, int font_size, int x, int y, int max_widt
 
     glNamedBufferData(chars_buf, charCount * 6 * sizeof(int32_t), data, GL_DYNAMIC_DRAW);
     ce;
-
-    glClear(GL_COLOR_BUFFER_BIT);
 
     ce;
     glUseProgram(prog);

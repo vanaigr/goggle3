@@ -1,4 +1,5 @@
 #include<stdint.h>
+// #include<stdio.h>
 #include"defs.h"
 #include"alloc.h"
 
@@ -8,6 +9,7 @@ char *tmp = tmp_buf;
 char *const tmp_end = tmp_buf + tmp_max_c;
 
 char *alloc(int size, int align_pow) {
+    // printf("allocated %d bytes with %d align\n", size, 1 << align_pow);
     var res = (((uintptr_t)tmp >> align_pow) << align_pow);
     if(res != (uintptr_t)tmp) res += 1 << align_pow;
 
