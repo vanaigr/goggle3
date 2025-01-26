@@ -8,6 +8,7 @@
 
 #include"defs.h"
 #include"alloc.h"
+#include"text.h"
 
 #define LCD 1
 
@@ -15,8 +16,6 @@ static FT_Library F;
 static GLuint glyph_buf;
 static GLuint chars_buf;
 static GLuint prog;
-
-static int const font_size = 24;
 
 static struct {
     GLuint buf;
@@ -43,15 +42,26 @@ struct FontInfo {
     Chars chars;
 };
 
-// by font size
-static std::unordered_map<int, FontInfo*> fonts{};
+struct FontDefHash {
+    std::size_t operator()(const FontDef k) const {
+        return std::hash<uint64_t>()(uint32_t(k.font_size) + (uint64_t(k.bold) << 32));
+    }
+};
 
-FontInfo *get_font_info(int font_size) {
-    var &f = fonts[font_size];
+// by font size
+static std::unordered_map<FontDef, FontInfo*, FontDefHash> fonts{};
+
+FontInfo *get_font_info(FontDef fd) {
+    var &f = fonts[fd];
     if(f == nullptr) {
         f = new FontInfo{};
-        FT_New_Face(F, "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0, &f->face);
-        if(FT_Set_Pixel_Sizes(f->face, 0, font_size)) {
+        if(fd.bold) {
+            FT_New_Face(F, "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 0, &f->face);
+        }
+        else {
+            FT_New_Face(F, "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0, &f->face);
+        }
+        if(FT_Set_Pixel_Sizes(f->face, 0, fd.font_size)) {
             printf("font where?\n");
             throw 1;
         }
@@ -311,14 +321,14 @@ static CharInfo get_glyph(FontInfo *font_info, int code) {
 void text_draw(
     char const *text,
     int text_c,
-    int font_size,
+    FontDef fd,
     int begin_x,
     int begin_y,
     int max_width
 ) {
     let ptmp = tmp;
 
-    let fi = get_font_info(font_size);
+    let fi = get_font_info(fd);
 
     let data = talloc<int32_t>(text_c * 6);
 
@@ -332,7 +342,7 @@ void text_draw(
         let ci = get_glyph(fi, c);
         if(c == '\n') {
             x = begin_x;
-            y -= font_size * 1.25;
+            y -= fd.font_size * 1.25;
             prev_glyph_index = 0;
             continue;
         }
