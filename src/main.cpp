@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
 
         let now = chrono::steady_clock::now();
         if(now >= next_redraw) {
-            text_draw(text, text_c, width, height);
+            text_draw(text, text_c, 24, width / 2, height / 2, width);
 
             // what is even the point of BlitNamed if I must unbind
             // the framebuffer before using it??

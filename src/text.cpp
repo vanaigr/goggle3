@@ -18,11 +18,12 @@ static GLuint prog;
 static int const font_size = 24;
 
 typedef struct {
-    int advance; // 26.6
-    int texture_x, texture_w;
-    int texture_left_off; // 26.6
-    int texture_top_off; // 26.6
+    int texture_w, texure_h;
+    int texture_x;
     int glyph_index;
+    int16_t left_off;
+    int16_t top_off;
+    int16_t advance;
     bool initialized;
 } CharInfo;
 
@@ -56,13 +57,6 @@ void programReport(GLint prog, char const *name = "whatever") {
 }
 
 int text_init() {
-    chars16[0] = {
-        .advance = 0,
-        .texture_x = 0,
-        .texture_w = 0,
-        .initialized = true,
-    };
-
     FT_Init_FreeType(&F);
 
     FT_New_Face(F, "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0, &face);
@@ -128,7 +122,7 @@ int text_init() {
 
     #if LCD
         R"(
-                ivec2 glyphs_coord = texture_off + ivec2(x, height-1 - y);
+                ivec2 glyphs_coord = texture_off + ivec2(x, character.a-1 - y);
                 vec3 alpha = imageLoad(glyphs, glyphs_coord).rgb;
 
                 // hack (more or less). If glyphs intersect, we may overwrite
@@ -203,7 +197,17 @@ static CharInfo get_glyph(int code) {
     #endif
     )) {
         printf("died on %d \n", code);
-        ci = chars16[0];
+
+        ci = CharInfo{
+            .texture_w = 0,
+            .texure_h = 0,
+            .texture_x = 0,
+            .glyph_index = glyph_index,
+            .left_off = 0,
+            .top_off = 0,
+            .advance = 0,
+            .initialized = true,
+        };
         return ci;
     }
 
@@ -251,31 +255,28 @@ static CharInfo get_glyph(int code) {
     // .width = (int)g->metrics.width,
 
     ci = CharInfo{
-        .advance = (int)g->advance.x,
-        .texture_x = off,
         .texture_w = (int)gl_texture_w,
-        .texture_left_off = g->bitmap_left,
-        .texture_top_off = g->bitmap_top,
+        .texure_h = (int)b.rows,
+        .texture_x = off,
         .glyph_index = glyph_index,
+        .left_off = (int16_t)(g->bitmap_left),
+        .top_off = (int16_t)(g->bitmap_top),
+        .advance = (int16_t)(g->advance.x >> 6),
         .initialized = true,
     };
 
-    off += b.width;
+    off += gl_texture_w;
 
     return ci;
 }
 
-void text_draw(char *text, int text_c, int width, int height) {
+void text_draw(char *text, int text_c, int font_size, int x, int y, int max_width) {
     let ptmp = tmp;
 
     let data = talloc<int32_t>(text_c * 6);
 
-    let o6 = 1.0f / 64;
-
     var charCount = 0;
 
-    float x = width / 2.0f;
-    float y = height / 2.0f;
     for(var i = 0; i < text_c; i++) {
         let c = text[i];
         let ci = get_glyph(c);
@@ -294,24 +295,18 @@ void text_draw(char *text, int text_c, int width, int height) {
                 FT_KERNING_DEFAULT,
                 &kerning
             );
-            x += kerning.x * o6;
+            x += kerning.x >> 6;
         }
 
-        var left_off = x + ci.texture_left_off;
-        var top_off = y + ci.texture_top_off;
-
-        let gw = ci.texture_w;
-        let gh = font_size;
-
-        data[charCount * 6 + 0] = int{ (int)std::floor(left_off) };
-        data[charCount * 6 + 1] = int{ (int)std::floor(top_off) };
-        data[charCount * 6 + 2] = int{ gw };
-        data[charCount * 6 + 3] = int{ gh };
+        data[charCount * 6 + 0] = int{ x + ci.left_off };
+        data[charCount * 6 + 1] = int{ y + ci.top_off - ci.texure_h };
+        data[charCount * 6 + 2] = int{ ci.texture_w };
+        data[charCount * 6 + 3] = int{ ci.texure_h };
         data[charCount * 6 + 4] = int{ ci.texture_x };
         data[charCount * 6 + 5] = int{ 0 };
         charCount++;
 
-        x += ci.advance * o6;
+        x += ci.advance;
     }
 
     glNamedBufferData(chars_buf, charCount * 6 * sizeof(int32_t), data, GL_DYNAMIC_DRAW);
