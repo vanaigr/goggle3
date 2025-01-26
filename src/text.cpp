@@ -346,6 +346,11 @@ void text_draw(
             prev_glyph_index = 0;
             continue;
         }
+        else if(c == ' ') {
+            x += ci.advance;
+            prev_glyph_index = ci.glyph_index;
+            continue;
+        }
 
         if(prev_glyph_index != 0) {
             FT_Vector kerning;
@@ -367,6 +372,7 @@ void text_draw(
         charCount++;
 
         x += ci.advance;
+        prev_glyph_index = ci.glyph_index;
     }
 
     glNamedBufferData(chars_buf, charCount * 6 * sizeof(int32_t), data, GL_DYNAMIC_DRAW);
