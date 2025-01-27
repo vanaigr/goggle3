@@ -1,6 +1,7 @@
 #include<X11/Xlib.h>
 #include<X11/Xutil.h>
 #include<X11/Xatom.h>
+#include<poll.h>
 #include<cmath>
 #include<GL/glew.h>
 #include<GL/glx.h>
@@ -105,8 +106,6 @@ int main(int argc, char **argv) {
 
     XMapWindow(display, window);
 
-    bool keming = true;
-
     let text = tmp;
     let text_end = tmp + 4096;
     var text_c = 5;
@@ -114,41 +113,12 @@ int main(int argc, char **argv) {
     tmp += 4096;
 
     var next_redraw = chrono::steady_clock::now();
-    let frame_time = static_cast<chrono::microseconds>(chrono::seconds(1)) / 60;
+    let frame_time = static_cast<chrono::microseconds>(chrono::seconds(1)) / 40;
 
-    XEvent event;
+    bool changed = true;
     while (1) {
-        XNextEvent(display, &event);
-        if (event.type == Expose) {
-            // Draw something if needed
-        } else if (event.type == KeyPress) {
-            if(event.xkey.keycode == 24) {
-                // q
-                break;
-            }
-            else if(event.xkey.keycode == 64) {
-                // left alt
-                keming = !keming;
-            }
-            else if(event.xkey.keycode == 22) {
-                // backspace
-                text_c = text_c >= 1 ? text_c - 1 : 0;
-            }
-            else if(event.xkey.keycode == 36) {
-                // enter
-                text[text_c++] = '\n';
-            }
-            else {
-                KeySym keysym;
-                XComposeStatus compose;
-                let p = text + text_c;
-                int len = XLookupString(&event.xkey, p, text_end - p, &keysym, &compose);
-                text_c += len;
-            }
-        }
-
         let now = chrono::steady_clock::now();
-        if(now >= next_redraw) {
+        if(changed && now >= next_redraw) {
             glClear(GL_COLOR_BUFFER_BIT);
 
             text_draw(text, text_c, { 24, true }, width / 2, height / 2, width / 5);
@@ -172,8 +142,57 @@ int main(int argc, char **argv) {
             if(next_redraw < now && now - next_redraw >= frame_time) {
                 next_redraw = now;
             }
+            changed = false;
+        }
+
+        if(changed && XPending(display) == 0) {
+            struct pollfd pfd = {
+                .fd = ConnectionNumber(display),
+                .events = POLLIN,
+            };
+
+            while(true) {
+                let now = chrono::steady_clock::now();
+                let timeout = chrono::duration_cast<chrono::milliseconds>(
+                    next_redraw - now
+                ).count();
+                if(timeout <= 0 || poll(&pfd, 1, timeout) > 0) {
+                    break;
+                }
+            }
+        }
+
+        while(!changed || XPending(display) > 0) {
+            XEvent event;
+            XNextEvent(display, &event);
+            if (event.type == Expose) {
+                changed = true;
+            } else if (event.type == KeyPress) {
+                if(event.xkey.keycode == 24) {
+                    // q
+                    goto exit;
+                }
+                else if(event.xkey.keycode == 22) {
+                    // backspace
+                    text_c = text_c >= 1 ? text_c - 1 : 0;
+                }
+                else if(event.xkey.keycode == 36) {
+                    // enter
+                    text[text_c++] = '\n';
+                }
+                else {
+                    KeySym keysym;
+                    XComposeStatus compose;
+                    let p = text + text_c;
+                    int len = XLookupString(&event.xkey, p, text_end - p, &keysym, &compose);
+                    text_c += len;
+                }
+                changed = true;
+            }
         }
     }
+
+    exit:
 
     XDestroyWindow(display, window);
     XCloseDisplay(display);
