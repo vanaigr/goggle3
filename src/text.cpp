@@ -1,3 +1,4 @@
+#include<cstring>
 #include<ft2build.h>
 #include FT_FREETYPE_H
 #include<GL/glew.h>
@@ -318,6 +319,74 @@ static CharInfo get_glyph(FontInfo *font_info, int code) {
     return ci;
 }
 
+struct TextState {
+    int text_i;
+    int x;
+    int y;
+    int char_c;
+    int prev_glyph_index = 1;
+    bool continuing;
+};
+
+struct LayoutResult {
+    TextState state;
+    bool cutoff;
+};
+
+LayoutResult lay_out(
+    TextState s,
+    char const *text,
+    int text_c,
+    FontInfo *fi,
+    int x_cutoff,
+    int32_t *data
+) {
+    while(s.text_i < text_c) {
+        let c = text[s.text_i];
+
+        if(c == '\n') {
+            return { s, false };
+        }
+        else if(c == ' ') {
+            return { s, false };
+        }
+        else if(s.x >= x_cutoff) {
+            return { s, true };
+        }
+
+        let ci = get_glyph(fi, c);
+
+        if(s.prev_glyph_index != -1) {
+            FT_Vector kerning;
+            let error = FT_Get_Kerning(
+                fi->face,
+                s.prev_glyph_index,
+                ci.glyph_index,
+                FT_KERNING_DEFAULT,
+                &kerning
+            );
+            s.x += kerning.x >> 6;
+        }
+
+        if(s.x + ci.width > x_cutoff) {
+            return { s, true };
+        }
+
+        data[s.char_c * 6 + 0] = int{ s.x + ci.left_off };
+        data[s.char_c * 6 + 1] = int{ s.y + ci.top_off - ci.height };
+        data[s.char_c * 6 + 2] = int{ ci.width };
+        data[s.char_c * 6 + 3] = int{ ci.height };
+        data[s.char_c * 6 + 4] = int{ ci.glyphs_off };
+
+        s.x += ci.advance;
+        s.prev_glyph_index = ci.glyph_index;
+        s.char_c++;
+        s.text_i++;
+    }
+
+    return { s, false };
+}
+
 void text_draw(
     char const *text,
     int text_c,
@@ -326,61 +395,91 @@ void text_draw(
     int begin_y,
     int max_width
 ) {
+    if(max_width <= 0) throw 1;
+
     let ptmp = tmp;
 
     let fi = get_font_info(fd);
-
     let data = talloc<int32_t>(text_c * 6);
+    let tmp_data = talloc<int32_t>(text_c * 6);
 
-    var charCount = 0;
-    var prev_glyph_index = 0;
+    let end_x = begin_x + max_width;
+    let dy = fd.font_size * 1.25;
 
-    var x = begin_x;
-    var y = begin_y;
-    for(var i = 0; i < text_c; i++) {
-        let c = text[i];
-        let ci = get_glyph(fi, c);
+    TextState commited{ .x = begin_x, .y = begin_y };
+    while(commited.text_i < text_c) {
+        let c = text[commited.text_i];
+
         if(c == '\n') {
-            x = begin_x;
-            y -= fd.font_size * 1.25;
-            prev_glyph_index = 0;
-            continue;
+            commited.x = begin_x;
+            commited.y -= dy;
+            commited.prev_glyph_index = -1;
+            commited.text_i++;
+            commited.continuing = false;
         }
         else if(c == ' ') {
-            x += ci.advance;
-            prev_glyph_index = ci.glyph_index;
-            continue;
+            TextState s = commited;
+            let ci = get_glyph(fi, ' ');
+
+            // no kerning. Is it important?
+            while(s.text_i < text_c) {
+                let c = text[s.text_i];
+                if(c != ' ') break;
+
+                if(s.x >= end_x || s.x + ci.width > end_x) {
+                    s.x = begin_x;
+                    s.y -= dy;
+                    s.prev_glyph_index = -1;
+                }
+                else {
+                    s.x += ci.advance;
+                    s.prev_glyph_index = ci.glyph_index;
+                }
+                s.text_i++;
+            }
+
+            s.continuing = false;
+            commited = s;
         }
+        else {
+            var res = lay_out(commited, text, text_c, fi, end_x, data);
+            if(res.cutoff) {
+                if(res.state.continuing) {
+                    res.state.x = begin_x;
+                    res.state.y -= dy;
+                    res.state.prev_glyph_index = -1;
+                }
+                else {
+                    var cand = commited;
+                    cand.x = begin_x;
+                    cand.y -= dy;
+                    cand.prev_glyph_index = -1;
 
-        if(prev_glyph_index != 0) {
-            FT_Vector kerning;
-            let error = FT_Get_Kerning(
-                fi->face,
-                prev_glyph_index,
-                ci.glyph_index,
-                FT_KERNING_DEFAULT,
-                &kerning
-            );
-            x += kerning.x >> 6;
+                    res = lay_out(cand, text, text_c, fi, end_x, data);
+                    if(res.cutoff) {
+                        res.state.x = begin_x;
+                        res.state.y -= dy;
+                        res.state.prev_glyph_index = -1;
+                        res.state.continuing = true;
+                    }
+                }
+            }
+
+            commited = res.state;
         }
-
-        data[charCount * 6 + 0] = int{ x + ci.left_off };
-        data[charCount * 6 + 1] = int{ y + ci.top_off - ci.height };
-        data[charCount * 6 + 2] = int{ ci.width };
-        data[charCount * 6 + 3] = int{ ci.height };
-        data[charCount * 6 + 4] = int{ ci.glyphs_off };
-        charCount++;
-
-        x += ci.advance;
-        prev_glyph_index = ci.glyph_index;
     }
 
-    glNamedBufferData(chars_buf, charCount * 6 * sizeof(int32_t), data, GL_DYNAMIC_DRAW);
+    glMemoryBarrier(GL_ALL_BARRIER_BITS);
+    glNamedBufferData(
+        chars_buf, commited.char_c * 6 * sizeof(int32_t),
+        data, GL_DYNAMIC_DRAW
+    );
+    glMemoryBarrier(GL_ALL_BARRIER_BITS);
     ce;
 
     ce;
     glUseProgram(prog);
-    glDispatchCompute(text_c, 1, 1);
+    glDispatchCompute(commited.char_c, 1, 1);
     glMemoryBarrier(GL_ALL_BARRIER_BITS);
     ce;
 

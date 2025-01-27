@@ -151,8 +151,7 @@ int main(int argc, char **argv) {
         if(now >= next_redraw) {
             glClear(GL_COLOR_BUFFER_BIT);
 
-            text_draw(text, text_c, { 24, true }, width / 2, height / 2, width);
-            text_draw(text, text_c, { 48, false }, width / 4, height / 8 * 5, width);
+            text_draw(text, text_c, { 24, true }, width / 2, height / 2, width / 5);
 
             // what is even the point of BlitNamed if I must unbind
             // the framebuffer before using it??
