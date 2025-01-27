@@ -121,7 +121,24 @@ int main(int argc, char **argv) {
         if(changed && now >= next_redraw) {
             glClear(GL_COLOR_BUFFER_BIT);
 
-            text_draw(text, text_c, { 24, true }, width / 2, height / 2, width / 5);
+
+            int colors[]{
+                0xffffff,
+                0xdfdfdf,
+                0xafafaf,
+                0x8f8f8f,
+                0x404040,
+            };
+            var fd = FontDef{ 24, false,  };
+            var x = width / 2;
+            var y = height / 2;
+            for(int a = 0; a < 5; a++) {
+                fd.color = colors[a];
+                fd.bold = a == 2;
+                text_draw(text, text_c, fd, x, y, width);
+                x += 40;
+                y -= 25;
+            }
 
             // what is even the point of BlitNamed if I must unbind
             // the framebuffer before using it??

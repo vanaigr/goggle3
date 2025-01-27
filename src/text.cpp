@@ -17,6 +17,7 @@ static FT_Library F;
 static GLuint glyph_buf;
 static GLuint chars_buf;
 static GLuint prog;
+static GLuint color_u;
 
 static struct {
     GLuint buf;
@@ -43,17 +44,30 @@ struct FontInfo {
     Chars chars;
 };
 
-struct FontDefHash {
-    std::size_t operator()(const FontDef k) const {
+struct FontKey {
+    int font_size;
+    bool bold;
+};
+
+FontKey fontKey(FontDef fd) {
+    return { fd.font_size, fd.bold };
+}
+
+inline bool operator==(FontKey a, FontKey b) {
+    return a.font_size == b.font_size && a.bold == b.bold;
+}
+struct FontKeyHash {
+    std::size_t operator()(const FontKey k) const {
         return std::hash<uint64_t>()(uint32_t(k.font_size) + (uint64_t(k.bold) << 32));
     }
 };
 
+
 // by font size
-static std::unordered_map<FontDef, FontInfo*, FontDefHash> fonts{};
+static std::unordered_map<FontKey, FontInfo*, FontKeyHash> fonts{};
 
 FontInfo *get_font_info(FontDef fd) {
-    var &f = fonts[fd];
+    var &f = fonts[fontKey(fd)];
     if(f == nullptr) {
         f = new FontInfo{};
         if(fd.bold) {
@@ -94,6 +108,8 @@ int text_init() {
             uint glyph_data[];
         };
 
+        uniform vec3 color;
+
         void main() {
             int groupId = int(gl_WorkGroupID.x);
 
@@ -127,21 +143,12 @@ int text_init() {
                 // values.
                 if(any(greaterThan(alpha, vec3(0)))) {
                     vec4 prev_color = imageLoad(outImg, coord);
-                    vec4 color = vec4(mix(prev_color.rgb, vec3(1, 1, 1), alpha), 1);
+                    vec4 color = vec4(mix(prev_color.rgb, color, alpha), 1);
                     imageStore(outImg, coord, color);
                 }
     )"
     #else
-        R"(
-                ivec2 glyphs_coord = texture_off + ivec2(x, height-1 - y);
-                float alpha = imageLoad(glyphs, glyphs_coord).r;
-
-                if(alpha > 0) {
-                    vec4 prev_color = imageLoad(outImg, coord);
-                    vec4 color = mix(prev_color, vec4(1, 1, 1, 1), alpha);
-                    imageStore(outImg, coord, color);
-                }
-    )"
+            not supported
     #endif
     R"(
             }
@@ -160,8 +167,10 @@ int text_init() {
 
     glUseProgram(prog);
 
-    let loc = glGetUniformLocation(prog, "outImg");
-    glUniform1i(loc, 1);
+    let img = glGetUniformLocation(prog, "outImg");
+    glUniform1i(img, 1);
+
+    color_u = glGetUniformLocation(prog, "color");
 
     return 0;
 }
@@ -478,6 +487,13 @@ void text_draw(
     ce;
 
     ce;
+    let c = fd.color;
+    glUniform3f(
+        color_u,
+        ((c      ) & 0xff) / 255.0,
+        ((c >>  8) & 0xff) / 255.0,
+        ((c >> 16) & 0xff) / 255.0
+    );
     glUseProgram(prog);
     glDispatchCompute(commited.char_c, 1, 1);
     glMemoryBarrier(GL_ALL_BARRIER_BITS);
