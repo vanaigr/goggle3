@@ -5,6 +5,7 @@
 #include<cmath>
 #include<GL/glew.h>
 #include<GL/glx.h>
+#include<curl/curl.h>
 #include<stdlib.h>
 #include<stdio.h>
 #include<assert.h>
@@ -19,6 +20,100 @@
 
 namespace chrono = std::chrono;
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <curl/curl.h>
+
+struct Response {
+    char *data;
+    int len;
+};
+
+size_t write_callback(void *contents, size_t size, size_t nmemb, Response *userp) {
+    let chunk_len = size * nmemb;
+    var resp = *userp;
+
+    let new_len = resp.len + chunk_len;
+    resp.data = (char*)realloc(resp.data, new_len);
+    memcpy(resp.data + resp.len, contents, chunk_len);
+    resp.len = new_len;
+
+    *userp = resp;
+
+    return chunk_len;
+}
+
+#include<stdio.h>
+int main() {
+#if 0
+    char const url[] = "https://www.google.com/search?asearch=arc&async=use_ac:true,_fmt:prog&q=a";
+
+    let headers = curl_slist_append(nullptr, "Accept: */*");
+    // now it fails without useragent. And it has to be "valid"...
+    curl_slist_append(headers, "user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36");
+
+    CURL *curl;
+    CURLM *multi_handle;
+    int still_running;
+
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    curl = curl_easy_init();
+    multi_handle = curl_multi_init();
+
+    if (!curl || !multi_handle) {
+        fprintf(stderr, "Failed to initialize libcurl\n");
+        return 1;
+    }
+
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+    Response resp{};
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&resp);
+
+
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+    curl_multi_add_handle(multi_handle, curl);
+
+    do {
+        int numfds;
+        curl_multi_perform(multi_handle, &still_running);
+
+        if (still_running) {
+            curl_multi_wait(multi_handle, NULL, 0, 1000, &numfds);
+        }
+    } while (still_running);
+
+    // let file = fopen("response.txt", "w");
+    // fwrite(resp.data, resp.len, 1, file);
+    // fclose(file);
+
+    curl_multi_remove_handle(multi_handle, curl);
+    curl_easy_cleanup(curl);
+    curl_multi_cleanup(multi_handle);
+    curl_global_cleanup();
+#else
+    let file = fopen("response.txt", "r");
+    fseek(file, 0, SEEK_END);
+    let len = (int)ftell(file);
+    fseek(file, 0, SEEK_SET);
+    let buf = alloc(len, 6);
+    fread(buf, len, 1, file);
+    let resp = Response{ .data = buf, .len = len };
+#endif
+
+    printf("received %d bytes total\n", resp.len);
+    printf("%.*s", resp.len, resp.data);
+
+    let ptmp = tmp;
+    //extract(resp.data, resp.len);
+    tmp = ptmp;
+
+    return 0;
+}
+
+#if 0
 int main(int argc, char **argv) {
     Display *display = XOpenDisplay(NULL);
     if (display == NULL) return 1;
@@ -214,3 +309,4 @@ int main(int argc, char **argv) {
     XDestroyWindow(display, window);
     XCloseDisplay(display);
 }
+#endif

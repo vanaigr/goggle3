@@ -1,4 +1,4 @@
-constexpr int tmp_max_c = 200000;
+constexpr int tmp_max_c = 2000000;
 
 extern char *tmp;
 extern char *const tmp_end;

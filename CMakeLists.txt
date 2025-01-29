@@ -15,10 +15,14 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 find_package(PkgConfig REQUIRED)
 
 pkg_check_modules(FREETYPE REQUIRED freetype2)
-
 target_include_directories(${PROJECT_NAME} PRIVATE ${FREETYPE_INCLUDE_DIRS})
 target_link_directories(${PROJECT_NAME} PRIVATE ${FREETYPE_LIBRARY_DIRS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${FREETYPE_LIBRARIES})
-target_compile_options(${PROJECT_NAME} PRIVATE ${SOME_PACKAGE_CFLAGS_OTHER})
+
+# libcurl4-openssl-dev
+pkg_check_modules(LIBCURL REQUIRED libcurl)
+target_include_directories(${PROJECT_NAME} PRIVATE ${LIBCURL_INCLUDE_DIRS})
+target_link_directories(${PROJECT_NAME} PRIVATE ${LIBCURL_LIBRARY_DIRS})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBCURL_LIBRARIES})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE X11 GL GLEW)
