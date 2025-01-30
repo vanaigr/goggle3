@@ -7,7 +7,7 @@
 
 #define PRINT 0
 
-static char *find(char *b, char *e, char c) {
+char const *find(char const *b, char const *e, char c) {
     let res = memchr(b, c, e - b);
     if(res == NULL) return e;
     return (char*)res;
@@ -22,7 +22,7 @@ constexpr static bool is_self_closing(char const *tag, int tag_c) {
 }
 
 
-Tags htmlToTags(char *data, int len) {
+Tags htmlToTags(char const *data, int len) {
     let end = data + len;
     var current = data;
 
@@ -63,7 +63,10 @@ Tags htmlToTags(char *data, int len) {
                                 if(c == '\'' || c == '"') {
                                     in_which_quote = c;
                                 }
-                                if(c == '>') break;
+                                if(c == '>') {
+                                    cur++;
+                                    break;
+                                }
                             }
 
                             backslash = !backslash && c == '\\';
@@ -75,6 +78,7 @@ Tags htmlToTags(char *data, int len) {
                 cur++;
             }
 
+            let content_beg = cur;
             let name_c = (int)(nameEnd - nameBeg);
 
             if(name_c == 0) {
@@ -96,12 +100,14 @@ Tags htmlToTags(char *data, int len) {
                 );
             #endif
                 var &t = tags[tags_c];
+                tags_c++;
                 t = Tag{
-                    .name = nameBeg,
-                    .content_beg = nameEnd + 1,
-                    .content_end = nameEnd + 1,
-                    .name_c = name_c,
-                    .children_e = tags_c,
+                    .begin = cur,
+                    .name = { nameBeg, name_c },
+                    .content_beg = content_beg,
+                    .content_end = content_beg,
+                    .end = content_beg,
+                    .descendants_e = tags + tags_c,
                 };
 
                 if(self_closing);
@@ -134,9 +140,6 @@ Tags htmlToTags(char *data, int len) {
                     stack[stack_c] = &t;
                     stack_c++;
                 }
-
-
-                tags_c++;
             }
         }
         else if(end - cur > 0) {
@@ -144,36 +147,42 @@ Tags htmlToTags(char *data, int len) {
             let end_tag_b = cur;
             let end_tag_e = find(cur, end, '>');
             let end_tag_c = (int)(end_tag_e - end_tag_b);
-
-            var stop_tag = stack_c - 1;
-            while(stop_tag != -1) {
-                let &t = *stack[stop_tag];
-                if(t.name_c == end_tag_c && memcmp(t.name, end_tag_b, t.name_c) == 0) {
-                    break;
-                }
-                stop_tag--;
-            }
-
-            if(stop_tag == -1) {
-                printf("Error: tag %.*s not found\n", end_tag_c, end_tag_b);
+            if(end_tag_e == end) {
+                printf("invalid closing tag %.*s\n", (int)(end - end_tag_b), end_tag_b);
+                cur = end;
             }
             else {
-                for(var i = stack_c - 1; i != stop_tag - 1; i--) {
-                    var &t = *stack[i];
-                    t.children_e = tags_c;
-                    t.content_end = begin;
-                #if PRINT
-                    for(var j = 0; j < i; j++) {
-                        printf(" ");
+                var stop_tag = stack_c - 1;
+                while(stop_tag != -1) {
+                    let &t = *stack[stop_tag];
+                    if(streq(t.name, { end_tag_b, end_tag_c })) {
+                        break;
                     }
-                    printf("</%.*s>\n", t.name_c, t.name);
-                #endif
+                    stop_tag--;
                 }
-                stack_c = stop_tag;
-                if(stack_c == 0) {
-                    // We know there's only one root html element.
-                    // rest is who knows.
-                    break;
+
+                if(stop_tag == -1) {
+                    printf("Error: tag %.*s not found\n", end_tag_c, end_tag_b);
+                }
+                else {
+                    for(var i = stack_c - 1; i != stop_tag - 1; i--) {
+                        var &t = *stack[i];
+                        t.descendants_e = tags + tags_c;
+                        t.content_end = begin;
+                        t.end = end_tag_e + 1;
+                    #if PRINT
+                        for(var j = 0; j < i; j++) {
+                            printf(" ");
+                        }
+                        printf("</%.*s>\n", t.name_c, t.name);
+                    #endif
+                    }
+                    stack_c = stop_tag;
+                    if(stack_c == 0) {
+                        // We know there's only one root html element.
+                        // rest is who knows.
+                        break;
+                    }
                 }
             }
         }
@@ -183,13 +192,14 @@ Tags htmlToTags(char *data, int len) {
 
     for(var i = 0; i < stack_c; i++) {
         var &t = *stack[i];
-        t.children_e = tags_c;
+        t.descendants_e = tags + tags_c;
         t.content_end = end;
         for(var j = 0; j < i; j++) {
             printf(" ");
         }
-        printf("(this shouldn't happen)</%.*s>\n", t.name_c, t.name);
+        printf("(this shouldn't happen)</%.*s>\n", t.name.count, t.name.items);
     }
 
-    return { .tags = tags, .count = tags_c };
+    tmp = (char*)(tags + tags_c);
+    return { .items = tags, .count = tags_c };
 }

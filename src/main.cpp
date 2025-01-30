@@ -104,8 +104,7 @@ int main() {
 #endif
 
     let ptmp = tmp;
-    let tags = htmlToTags(resp.data, resp.len);
-
+    let results = extractResults(htmlToTags(resp.data, resp.len));
     tmp = ptmp;
 
     return 0;

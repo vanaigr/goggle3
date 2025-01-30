@@ -11,17 +11,48 @@ void programReport_(char const *file, int line, int prog, char const *name = "wh
 #define programReport(...) programReport_(__FILE__, __LINE__, __VA_ARGS__)
 
 
-struct Tag {
-    char const *name;
-    char const *content_beg;
-    char const *content_end;
-    int name_c;
-    int children_e;
-};
-
-struct Tags {
-    Tag *tags;
+struct str {
+    char const *items;
     int count;
 };
 
-Tags htmlToTags(char *data, int len);
+bool streq(str a, str b);
+
+#define STR(a) (str{ .items = a, .count = sizeof(a) - 1 })
+
+char const *find(char const *b, char const *e, char c);
+
+struct Tag {
+    char const *begin;
+    str name;
+    char const *content_beg;
+    char const *content_end;
+    char const *end;
+    Tag *descendants_e;
+};
+
+struct Tags {
+    Tag *items;
+    int count;
+};
+
+Tags htmlToTags(char const *data, int len);
+
+
+struct Result {
+    str title;
+    str site_name;
+    str site_display_url;
+    str url;
+    str desc;
+
+    // str ping;
+    // str favicon;
+};
+
+struct Results {
+    Result *items;
+    int count;
+};
+
+Result extractResults(Tags tags);

@@ -1,4 +1,5 @@
 #include<stdint.h>
+#include<cstring>
 // #include<stdio.h>
 #include"defs.h"
 #include"alloc.h"
@@ -19,4 +20,8 @@ char *alloc(int size, int align_pow) {
     let res = align(tmp, align_pow);
     tmp = res + size;
     return res;
+}
+
+bool streq(str a, str b) {
+    return a.count == b.count && memcmp(a.items, b.items, a.count) == 0;
 }
