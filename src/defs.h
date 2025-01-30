@@ -10,4 +10,18 @@ void programReport_(char const *file, int line, int prog, char const *name = "wh
 #define shaderReport(...) shaderReport_(__FILE__, __LINE__, __VA_ARGS__)
 #define programReport(...) programReport_(__FILE__, __LINE__, __VA_ARGS__)
 
-void extract(char *data, int len);
+
+struct Tag {
+    char const *name;
+    char const *content_beg;
+    char const *content_end;
+    int name_c;
+    int children_e;
+};
+
+struct Tags {
+    Tag *tags;
+    int count;
+};
+
+Tags htmlToTags(char *data, int len);

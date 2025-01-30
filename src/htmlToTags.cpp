@@ -5,6 +5,8 @@
 #include"defs.h"
 #include"alloc.h"
 
+#define PRINT 0
+
 static char *find(char *b, char *e, char c) {
     let res = memchr(b, c, e - b);
     if(res == NULL) return e;
@@ -19,15 +21,8 @@ constexpr static bool is_self_closing(char const *tag, int tag_c) {
     return false;
 }
 
-struct Tag {
-    char const *name;
-    char const *content_beg;
-    char const *content_end;
-    int name_c;
-    int children_e;
-};
 
-void extract(char *data, int len) {
+Tags htmlToTags(char *data, int len) {
     let end = data + len;
     var current = data;
 
@@ -86,18 +81,20 @@ void extract(char *data, int len) {
                 printf("not a tag %.*s...\n", std::min<int>(5, end - nameEnd), nameBeg);
             }
             else {
-                for(var i = 0; i < stack_c; i++) {
-                    printf(" ");
-                }
                 let script = name_c == 6 && memcmp(nameBeg,  "script", 6) == 0;
                 let style = name_c == 5 && memcmp(nameBeg,  "style", 5) == 0;
                 let self_closing = is_self_closing(nameBeg, name_c);
+            #if PRINT
+                for(var i = 0; i < stack_c; i++) {
+                    printf(" ");
+                }
                 printf(
                     "<%.*s%s>\n",
                     name_c,
                     nameBeg,
                     (self_closing ? "/" : "")
                 );
+            #endif
                 var &t = tags[tags_c];
                 t = Tag{
                     .name = nameBeg,
@@ -165,10 +162,12 @@ void extract(char *data, int len) {
                     var &t = *stack[i];
                     t.children_e = tags_c;
                     t.content_end = begin;
+                #if PRINT
                     for(var j = 0; j < i; j++) {
                         printf(" ");
                     }
                     printf("</%.*s>\n", t.name_c, t.name);
+                #endif
                 }
                 stack_c = stop_tag;
                 if(stack_c == 0) {
@@ -191,4 +190,6 @@ void extract(char *data, int len) {
         }
         printf("(this shouldn't happen)</%.*s>\n", t.name_c, t.name);
     }
+
+    return { .tags = tags, .count = tags_c };
 }
