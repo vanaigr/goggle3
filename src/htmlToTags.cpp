@@ -48,7 +48,6 @@ Tags htmlToTags(char const *data, int len) {
                     nameEnd = cur;
                     if(c == ' ') {
                         cur++;
-
                         var backslash = false;
                         var in_which_quote = -999;
                         while(cur < end) {
@@ -64,7 +63,6 @@ Tags htmlToTags(char const *data, int len) {
                                     in_which_quote = c;
                                 }
                                 if(c == '>') {
-                                    cur++;
                                     break;
                                 }
                             }
@@ -73,6 +71,8 @@ Tags htmlToTags(char const *data, int len) {
                             cur++;
                         }
                     }
+
+                    cur++;
                     break;
                 }
                 cur++;

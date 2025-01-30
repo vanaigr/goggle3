@@ -17,11 +17,17 @@ void tryAddResult(Results &res, Tag *begin) {
     if(!streq(root.name, STR("div"))) return;
     if(root.descendants_e == begin + 1) return;
 
+    #define gotoFirstChild(cont, expectName) do {\
+        if(cont->descendants_e == cont + 1) return; \
+        cont = cont + 1; \
+        if(!streq(cont->name, STR(expectName))) return; \
+    } while(0)
+
     var container = &root;
     while(true) {
         var found = false;
         var pos = container->name.items + container->name.count;
-        let end = container->content_end;
+        let end = container->content_beg;
         while(pos < end) {
             let cmp = STR("data-rpos");
             if(streq({ pos + 1, std::min<int>(cmp.count, end - (pos + 1)) }, cmp )) {
@@ -33,20 +39,16 @@ void tryAddResult(Results &res, Tag *begin) {
 
         if(found) break;
 
-        if(container->descendants_e == container + 1) return;
-        container = container + 1;
-        if(!streq(container->name, STR("div"))) return;
+        gotoFirstChild(container, "div");
     }
 
-    if(container->descendants_e == container + 1) return;
-    container = container + 1;
-    if(!streq(container->name, STR("div"))) return;
+    gotoFirstChild(container, "div");
+    gotoFirstChild(container, "div");
 
-    if(container->descendants_e == container + 1) return;
-    container = container + 1;
-    if(!streq(container->name, STR("div"))) return;
+    var first_cont = container;
+    gotoFirstChild(first_cont, "div");
 
-    let &cont = *container;
+    let &cont = *first_cont;
 
     let &a = *findFirstName(&cont, cont.descendants_e, STR("a"));
     if(&a == cont.descendants_e) return;
@@ -58,6 +60,31 @@ void tryAddResult(Results &res, Tag *begin) {
     let &websiteNameTag = *findFirstName(&iconCont + 1, a.descendants_e, STR("span"));
 
     let &cite = *findFirstName(&websiteNameTag + 1, a.descendants_e, STR("cite"));
+
+    str desc = { nullptr, 0 };
+
+    var cur = first_cont;
+    while(true) {
+        // TODO: no description? Maybe should allow...
+        if(container->descendants_e == cur->descendants_e) return;
+        cur = cur->descendants_e;
+        if(!streq(cur->name, STR("div"))) return;
+
+        var c = cur;
+        gotoFirstChild(c, "div");
+        if(c->descendants_e == c + 1) {
+            desc = { c->content_beg, (int)(c->content_end - c->content_beg) };
+            break;
+        }
+        else if(c->descendants_e > c + 1) {
+            let prev_c = c;
+            c = c + 1;
+            if(prev_c->descendants_e == c->descendants_e && streq(c->name, STR("span"))) {
+                desc = { c->content_beg, (int)(c->content_end - c->content_beg) };
+                break;
+            }
+        }
+    }
 
     printf("found a result\n");
     printf(
@@ -75,6 +102,7 @@ void tryAddResult(Results &res, Tag *begin) {
         (int)(cite.content_end - cite.content_beg),
         cite.content_beg
     );
+    printf("  description is %.*s\n", desc.count, desc.items);
 }
 
 Result extractResults(Tags tags) {
