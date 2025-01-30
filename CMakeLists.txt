@@ -10,6 +10,10 @@ add_definitions(-DGLEW_STATIC)
 
 file(GLOB SOURCES "src/*.cpp")
 
+# TODO: use `missing-designated-field-initializers` for clang
+add_compile_options(-Werror=missing-field-initializers)
+add_compile_options(-fdiagnostics-color=always)
+
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 find_package(PkgConfig REQUIRED)

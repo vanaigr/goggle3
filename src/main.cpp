@@ -101,6 +101,19 @@ int main() {
 
     let ptmp = tmp;
     let results = extractResults(htmlToTags(resp.data, resp.len));
+
+    for(var i = 0; i < results.count; i++) {
+        let res = results.items[i];
+
+        printf("Result %d:\n", i);
+        printf("  title is %.*s\n", res.title.count, res.title.items);
+        printf("  website name is %.*s\n", res.site_name.count, res.site_name.items);
+        printf(
+            "  website url name is %.*s\n",
+            res.site_display_url.count, res.site_display_url.items);
+        printf("  description is %.*s\n", res.desc.count, res.desc.items);
+    }
+
     tmp = ptmp;
 
     return 0;

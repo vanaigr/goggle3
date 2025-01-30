@@ -19,6 +19,9 @@ struct str {
 bool streq(str a, str b);
 
 #define STR(a) (str{ .items = a, .count = sizeof(a) - 1 })
+static inline str mkstr(char const *b, char const *e) {
+    return { b, (int)(e - b) };
+}
 
 char const *find(char const *b, char const *e, char c);
 
@@ -63,4 +66,4 @@ struct Results {
     int count;
 };
 
-Result extractResults(Tags tags);
+Results extractResults(Tags tags);

@@ -80,31 +80,30 @@ void tryAddResult(Results &res, Tag *begin, Attr const *attrs) {
         }
     }
 
-    // let href = STR("href");
-    // let beg = findAttr(&a, href);
-    // if(!beg) return;
-    // beg += href.count
+    str href;
+    {
+        var i = a.attrs_beg;
+        let end = a.attrs_end;
+        while(i < end) {
+            let a = attrs[i];
+            if(streq(a.name, STR("href"))) break;
+            i++;
+        }
 
-    printf("found a result\n");
-    printf(
-        "  title is %.*s\n",
-        (int)(titleTag.content_end - titleTag.content_beg),
-        titleTag.content_beg
-    );
-    printf(
-        "  website name is %.*s\n",
-        (int)(websiteNameTag.content_end - websiteNameTag.content_beg),
-        websiteNameTag.content_beg
-    );
-    printf(
-        "  website url name is %.*s\n",
-        (int)(cite.content_end - cite.content_beg),
-        cite.content_beg
-    );
-    printf("  description is %.*s\n", desc.count, desc.items);
+        if(i == end) return;
+        href = attrs[i].value;
+    }
+
+    res.items[res.count++] = {
+        .title = mkstr(titleTag.content_beg, titleTag.content_end),
+        .site_name = mkstr(websiteNameTag.content_beg, websiteNameTag.content_end),
+        .site_display_url = mkstr(cite.content_beg, cite.content_end),
+        .url = href,
+        .desc = desc,
+    };
 }
 
-Result extractResults(Tags tags) {
+Results extractResults(Tags tags) {
     assert(tags.count > 0);
 
     Results res = { .items = (Result*)align(tmp, 6), .count = 0 };
@@ -114,6 +113,7 @@ Result extractResults(Tags tags) {
         tryAddResult(res, i, tags.attrs);
         i = i->descendants_e;
     }
+    tmp = (char*)(res.items + res.count);
 
-    return {};
+    return res;
 }

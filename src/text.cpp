@@ -329,11 +329,11 @@ static CharInfo get_glyph(FontInfo *font_info, int code) {
 }
 
 struct TextState {
-    int text_i;
     int x;
     int y;
+    int text_i;
     int char_c;
-    int prev_glyph_index = 1;
+    int prev_glyph_index;
     bool continuing;
 };
 
@@ -415,7 +415,16 @@ void text_draw(
     let end_x = begin_x + max_width;
     let dy = fd.font_size * 1.25;
 
-    TextState commited{ .x = begin_x, .y = begin_y };
+    TextState commited{
+        .x = begin_x,
+        .y = begin_y,
+
+        .text_i = 0,
+        .char_c = 0,
+        .prev_glyph_index = -1,
+        .continuing = false,
+    };
+
     while(commited.text_i < text_c) {
         let c = text[commited.text_i];
 
