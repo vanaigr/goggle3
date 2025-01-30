@@ -21,12 +21,95 @@ constexpr static bool is_self_closing(char const *tag, int tag_c) {
     return false;
 }
 
+struct Attrs {
+    Attr *items;
+    int count;
+    int cap;
+};
+
+static Attr *attrs_add(Attrs &attrs) {
+    if(attrs.count == attrs.cap) {
+        attrs.cap <<= 1;
+        attrs.items = (Attr*)realloc(attrs.items, sizeof(Attr) * attrs.cap);
+    }
+    return attrs.items + attrs.count++;
+
+}
+
+static char const *processAttrs(Attrs &attrs, char const *data, char const *end) {
+    var cur = data;
+
+    while(cur < end) {
+        while(cur < end && *cur == ' ') cur++;
+        if(cur == end) break;
+        if(*cur == '>') break;
+
+        let nameBeg = cur;
+        while(cur < end) {
+            let c = *cur;
+            if(c == '=' || c == '>' || c == ' ') break;
+            cur++;
+        }
+        let nameEnd = cur;
+
+        while(cur < end && *cur == ' ') cur++;
+
+        if(cur < end && *cur == '=') {
+            cur++;
+            while(cur < end && *cur == ' ') cur++;
+
+            var quoted = false;
+            if(cur < end) {
+                let quote = *cur;
+                if(quote == '"' || quote == '\'') {
+                    quoted = true;
+                    cur++;
+
+                    let valueBeg = cur;
+                    var backslash = false;
+                    while(cur < end) {
+                        let c = *cur;
+                        if(!backslash && c == quote) break;
+                        backslash = !backslash && c == '\\';
+                        cur++;
+                    }
+                    let valueEnd = cur;
+                    if(cur < end) cur++;
+
+                    *attrs_add(attrs) = {
+                        { nameBeg, (int)(nameEnd - nameBeg) },
+                        { valueBeg, (int)(valueEnd - valueBeg) },
+                    };
+                }
+            }
+
+            if(!quoted) {
+                printf(
+                    "Unquoted attribute %.*s\n",
+                    (int)(nameEnd - nameBeg),
+                    nameBeg
+                );
+                continue;
+            }
+        }
+        else {
+            *attrs_add(attrs) = {
+                { nameBeg, (int)(nameEnd - nameBeg) },
+                { nameEnd, 0 },
+            };
+        }
+    }
+
+    return cur;
+}
 
 Tags htmlToTags(char const *data, int len) {
     let end = data + len;
     var current = data;
 
     current = find(current, end, '\n');
+
+    var attrs = Attrs{ (Attr*)malloc(sizeof(Attr) * 1024), 0, 1024 };
 
     let stack = talloc<Tag*>(1024);
     var stack_c = 0;
@@ -41,38 +124,23 @@ Tags htmlToTags(char const *data, int len) {
             let nameBeg = cur + 1;
             var nameEnd = nameBeg;
 
+            let attrBeg = attrs.count;
+            var attrEnd = attrs.count;
+
             cur = nameBeg;
             while(cur < end) {
                 let c = *cur;
                 if(c == ' ' || c == '>') {
                     nameEnd = cur;
                     if(c == ' ') {
+                        cur = processAttrs(attrs, cur, end);
+                        if(cur < end) cur++;
+                        attrEnd = attrs.count;
+                    }
+                    else {
                         cur++;
-                        var backslash = false;
-                        var in_which_quote = -999;
-                        while(cur < end) {
-                            let c = *cur;
-
-                            if(in_which_quote != -999) {
-                                if(!backslash && c == in_which_quote) {
-                                    in_which_quote = -999;
-                                }
-                            }
-                            else {
-                                if(c == '\'' || c == '"') {
-                                    in_which_quote = c;
-                                }
-                                if(c == '>') {
-                                    break;
-                                }
-                            }
-
-                            backslash = !backslash && c == '\\';
-                            cur++;
-                        }
                     }
 
-                    cur++;
                     break;
                 }
                 cur++;
@@ -93,9 +161,10 @@ Tags htmlToTags(char const *data, int len) {
                     printf(" ");
                 }
                 printf(
-                    "<%.*s%s>\n",
+                    "<%.*s (%d attrs)%s>\n",
                     name_c,
                     nameBeg,
+                    attrEnd - attrBeg,
                     (self_closing ? "/" : "")
                 );
             #endif
@@ -108,6 +177,8 @@ Tags htmlToTags(char const *data, int len) {
                     .content_end = content_beg,
                     .end = content_beg,
                     .descendants_e = tags + tags_c,
+                    .attrs_beg = attrBeg,
+                    .attrs_end = attrEnd,
                 };
 
                 if(self_closing);
@@ -174,7 +245,7 @@ Tags htmlToTags(char const *data, int len) {
                         for(var j = 0; j < i; j++) {
                             printf(" ");
                         }
-                        printf("</%.*s>\n", t.name_c, t.name);
+                        printf("</%.*s>\n", t.name.count, t.name.items);
                     #endif
                     }
                     stack_c = stop_tag;
@@ -201,5 +272,5 @@ Tags htmlToTags(char const *data, int len) {
     }
 
     tmp = (char*)(tags + tags_c);
-    return { .items = tags, .count = tags_c };
+    return { .items = tags, .count = tags_c, .attrs = attrs.items };
 }

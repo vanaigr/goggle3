@@ -22,6 +22,11 @@ bool streq(str a, str b);
 
 char const *find(char const *b, char const *e, char c);
 
+struct Attr {
+    str name;
+    str value;
+};
+
 struct Tag {
     char const *begin;
     str name;
@@ -29,11 +34,14 @@ struct Tag {
     char const *content_end;
     char const *end;
     Tag *descendants_e;
+    int attrs_beg;
+    int attrs_end;
 };
 
 struct Tags {
     Tag *items;
     int count;
+    Attr *attrs; // malloc'ed
 };
 
 Tags htmlToTags(char const *data, int len);

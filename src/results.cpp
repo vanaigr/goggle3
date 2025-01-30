@@ -12,7 +12,7 @@ Tag const *findFirstName(Tag const *beg, Tag const *end, str name) {
     return end;
 }
 
-void tryAddResult(Results &res, Tag *begin) {
+void tryAddResult(Results &res, Tag *begin, Attr const *attrs) {
     let &root = *begin;
     if(!streq(root.name, STR("div"))) return;
     if(root.descendants_e == begin + 1) return;
@@ -25,20 +25,14 @@ void tryAddResult(Results &res, Tag *begin) {
 
     var container = &root;
     while(true) {
-        var found = false;
-        var pos = container->name.items + container->name.count;
-        let end = container->content_beg;
-        while(pos < end) {
-            let cmp = STR("data-rpos");
-            if(streq({ pos + 1, std::min<int>(cmp.count, end - (pos + 1)) }, cmp )) {
-                found = true;
-                break;
-            }
-            pos = find(pos + 1, end, ' ');
+        var i = container->attrs_beg;
+        let end = container->attrs_end;
+        while(i < end) {
+            if(streq(attrs[i].name, STR("data-rpos"))) break;
+            i++;
         }
 
-        if(found) break;
-
+        if(i != end) break;
         gotoFirstChild(container, "div");
     }
 
@@ -86,6 +80,11 @@ void tryAddResult(Results &res, Tag *begin) {
         }
     }
 
+    // let href = STR("href");
+    // let beg = findAttr(&a, href);
+    // if(!beg) return;
+    // beg += href.count
+
     printf("found a result\n");
     printf(
         "  title is %.*s\n",
@@ -112,7 +111,7 @@ Result extractResults(Tags tags) {
     var i = tags.items + 1;
     let end = tags.items[0].descendants_e;
     while(i < end) {
-        tryAddResult(res, i);
+        tryAddResult(res, i, tags.attrs);
         i = i->descendants_e;
     }
 
