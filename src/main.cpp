@@ -103,11 +103,8 @@ int main() {
     let resp = Response{ .data = buf, .len = len };
 #endif
 
-    printf("received %d bytes total\n", resp.len);
-    printf("%.*s", resp.len, resp.data);
-
     let ptmp = tmp;
-    //extract(resp.data, resp.len);
+    extract(resp.data, resp.len);
     tmp = ptmp;
 
     return 0;
