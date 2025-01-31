@@ -9,7 +9,6 @@
 
 #include"defs.h"
 #include"alloc.h"
-#include"text.h"
 
 #define LCD 1
 
@@ -47,18 +46,23 @@ struct FontInfo {
 struct FontKey {
     int font_size;
     bool bold;
+    bool italic;
 };
 
-FontKey fontKey(FontDef fd) {
-    return { fd.font_size, fd.bold };
+FontKey fontKey(int size, bool bold, bool italic) {
+    return { size, bold, italic };
 }
 
 inline bool operator==(FontKey a, FontKey b) {
-    return a.font_size == b.font_size && a.bold == b.bold;
+    return a.font_size == b.font_size && a.bold == b.bold && a.italic == b.italic;
 }
 struct FontKeyHash {
     std::size_t operator()(const FontKey k) const {
-        return std::hash<uint64_t>()(uint32_t(k.font_size) + (uint64_t(k.bold) << 32));
+        return std::hash<uint64_t>()(
+            uint32_t(k.font_size)
+                + (uint64_t(k.bold) << 32)
+                + (uint64_t(k.italic) << 33)
+        );
     }
 };
 
@@ -66,17 +70,23 @@ struct FontKeyHash {
 // by font size
 static std::unordered_map<FontKey, FontInfo*, FontKeyHash> fonts{};
 
-FontInfo *get_font_info(FontDef fd) {
-    var &f = fonts[fontKey(fd)];
+FontInfo *get_font_info(int size, bool bold, bool italic) {
+    var &f = fonts[fontKey(size, bold, italic)];
     if(f == nullptr) {
         f = new FontInfo{};
-        if(fd.bold) {
+        if(bold && italic) {
+            FT_New_Face(F, "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-BoldOblique.ttf", 0, &f->face);
+        }
+        else if(italic) {
+            FT_New_Face(F, "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Oblique.ttf", 0, &f->face);
+        }
+        else if(bold) {
             FT_New_Face(F, "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 0, &f->face);
         }
         else {
             FT_New_Face(F, "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0, &f->face);
         }
-        if(FT_Set_Pixel_Sizes(f->face, 0, fd.font_size)) {
+        if(FT_Set_Pixel_Sizes(f->face, 0, size)) {
             printf("font where?\n");
             throw 1;
         }
@@ -344,14 +354,13 @@ struct LayoutResult {
 
 LayoutResult lay_out(
     TextState s,
-    char const *text,
-    int text_c,
+    FormattedStr const *text,
     FontInfo *fi,
-    int x_cutoff,
-    int32_t *data
+    int max_width,
+    Draw *data
 ) {
-    while(s.text_i < text_c) {
-        let c = text[s.text_i];
+    while(s.text_i < text->len) {
+        let c = text->str[s.text_i];
 
         if(c == '\n') {
             return { s, false };
@@ -359,7 +368,7 @@ LayoutResult lay_out(
         else if(c == ' ') {
             return { s, false };
         }
-        else if(s.x >= x_cutoff) {
+        else if(s.x >= max_width) {
             return { s, true };
         }
 
@@ -377,47 +386,43 @@ LayoutResult lay_out(
             s.x += kerning.x >> 6;
         }
 
-        if(s.x + ci.width > x_cutoff) {
+        if(s.x + ci.width > max_width) {
             return { s, true };
         }
 
-        data[s.char_c * 6 + 0] = int{ s.x + ci.left_off };
-        data[s.char_c * 6 + 1] = int{ s.y + ci.top_off - ci.height };
-        data[s.char_c * 6 + 2] = int{ ci.width };
-        data[s.char_c * 6 + 3] = int{ ci.height };
-        data[s.char_c * 6 + 4] = int{ ci.glyphs_off };
+        data[s.char_c] = {
+            .x = s.x + ci.left_off ,
+            .y =  s.y + ci.top_off - ci.height,
+            .w = ci.width,
+            .h = ci.height,
+            .off = ci.glyphs_off,
+        };
 
         s.x += ci.advance;
         s.prev_glyph_index = ci.glyph_index;
         s.char_c++;
         s.text_i++;
+        tmp = (char*)(data + s.char_c);
     }
 
     return { s, false };
 }
 
-void text_draw(
-    char const *text,
-    int text_c,
-    FontDef fd,
-    int begin_x,
-    int begin_y,
+DrawList prepare(
+    FormattedStr const *text,
+    int font_size,
     int max_width
 ) {
     if(max_width <= 0) throw 1;
 
-    let ptmp = tmp;
+    let dy = font_size * 1.25;
 
-    let fi = get_font_info(fd);
-    let data = talloc<int32_t>(text_c * 6);
-    let tmp_data = talloc<int32_t>(text_c * 6);
-
-    let end_x = begin_x + max_width;
-    let dy = fd.font_size * 1.25;
+    let data = (Draw*)align(tmp, 6);
+    tmp = (char*)data;
 
     TextState commited{
-        .x = begin_x,
-        .y = begin_y,
+        .x = 0,
+        .y = 0,
 
         .text_i = 0,
         .char_c = 0,
@@ -425,88 +430,115 @@ void text_draw(
         .continuing = false,
     };
 
-    while(commited.text_i < text_c) {
-        let c = text[commited.text_i];
+    var curStr = text;
+    while(curStr) {
+        commited.text_i = 0;
+        commited.prev_glyph_index = -1;
+        commited.continuing = false;
+        let fi = get_font_info(font_size, curStr->bold, curStr->italic);
 
-        if(c == '\n') {
-            commited.x = begin_x;
-            commited.y -= dy;
-            commited.prev_glyph_index = -1;
-            commited.text_i++;
-            commited.continuing = false;
-        }
-        else if(c == ' ') {
-            TextState s = commited;
-            let ci = get_glyph(fi, ' ');
+        while(commited.text_i < curStr->len) {
+            let c = curStr->str[commited.text_i];
 
-            // no kerning. Is it important?
-            while(s.text_i < text_c) {
-                let c = text[s.text_i];
-                if(c != ' ') break;
-
-                if(s.x >= end_x || s.x + ci.width > end_x) {
-                    s.x = begin_x;
-                    s.y -= dy;
-                    s.prev_glyph_index = -1;
-                }
-                else {
-                    s.x += ci.advance;
-                    s.prev_glyph_index = ci.glyph_index;
-                }
-                s.text_i++;
+            if(c == '\n') {
+                commited.x = 0;
+                commited.y -= dy;
+                commited.prev_glyph_index = -1;
+                commited.text_i++;
+                commited.continuing = false;
             }
+            else if(c == ' ') {
+                TextState s = commited;
+                let ci = get_glyph(fi, ' ');
 
-            s.continuing = false;
-            commited = s;
-        }
-        else {
-            var res = lay_out(commited, text, text_c, fi, end_x, data);
-            if(res.cutoff) {
-                if(res.state.continuing) {
-                    res.state.x = begin_x;
-                    res.state.y -= dy;
-                    res.state.prev_glyph_index = -1;
+                // no kerning. Is it important?
+                while(s.text_i < curStr->len) {
+                    let c = curStr->str[s.text_i];
+                    if(c != ' ') break;
+
+                    if(s.x >= max_width || s.x + ci.width > max_width) {
+                        s.x = 0;
+                        s.y -= dy;
+                        s.prev_glyph_index = -1;
+                    }
+                    else {
+                        s.x += ci.advance;
+                        s.prev_glyph_index = ci.glyph_index;
+                    }
+                    s.text_i++;
                 }
-                else {
-                    var cand = commited;
-                    cand.x = begin_x;
-                    cand.y -= dy;
-                    cand.prev_glyph_index = -1;
 
-                    res = lay_out(cand, text, text_c, fi, end_x, data);
-                    if(res.cutoff) {
-                        res.state.x = begin_x;
+                s.continuing = false;
+                commited = s;
+            }
+            else {
+                var res = lay_out(commited, curStr, fi, max_width, data);
+                if(res.cutoff) {
+                    if(res.state.continuing) {
+                        res.state.x = 0;
                         res.state.y -= dy;
                         res.state.prev_glyph_index = -1;
-                        res.state.continuing = true;
+                    }
+                    else {
+                        var cand = commited;
+                        cand.x = 0;
+                        cand.y -= dy;
+                        cand.prev_glyph_index = -1;
+
+                        res = lay_out(cand, curStr, fi, max_width, data);
+                        if(res.cutoff) {
+                            res.state.x = max_width;
+                            res.state.y -= dy;
+                            res.state.prev_glyph_index = -1;
+                            res.state.continuing = true;
+                        }
                     }
                 }
-            }
 
-            commited = res.state;
+                commited = res.state;
+            }
         }
+
+        curStr = curStr->next;
+    }
+
+    return { .items = data, .count = commited.char_c };
+}
+
+void draw(DrawList dl, int color, int x, int y) {
+    let ptmp = tmp;
+
+    let data = talloc<uint32_t>(dl.count * 6);
+    for(var i = 0; i < dl.count; i++) {
+        let base = i * 6;
+        let it = dl.items[i];
+
+        data[base + 0] = it.x + x;
+        data[base + 1] = it.y + y;
+        data[base + 2] = it.w;
+        data[base + 3] = it.h;
+        data[base + 4] = it.off;
     }
 
     glMemoryBarrier(GL_ALL_BARRIER_BITS);
     glNamedBufferData(
-        chars_buf, commited.char_c * 6 * sizeof(int32_t),
+        chars_buf, dl.count * 6 * sizeof(int32_t),
         data, GL_DYNAMIC_DRAW
     );
     glMemoryBarrier(GL_ALL_BARRIER_BITS);
     ce;
 
+    tmp = ptmp;
+
     ce;
-    let c = fd.color;
     glUniform3f(
         color_u,
-        ((c      ) & 0xff) / 255.0,
-        ((c >>  8) & 0xff) / 255.0,
-        ((c >> 16) & 0xff) / 255.0
+        ((color      ) & 0xff) / 255.0,
+        ((color >>  8) & 0xff) / 255.0,
+        ((color >> 16) & 0xff) / 255.0
     );
     glUseProgram(prog);
-    glDispatchCompute(commited.char_c, 1, 1);
+    glDispatchCompute(dl.count, 1, 1);
     glMemoryBarrier(GL_ALL_BARRIER_BITS);
-    ce;
 
-    tmp = ptmp;
 }

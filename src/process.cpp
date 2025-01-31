@@ -39,10 +39,12 @@ static FormattedStr *addFormatted(char const *b, char const *e, Props props) {
     var cur = talloc<FormattedStr>(1);
     cur->bold = props.bold;
     cur->italic = props.italic;
+    let str = tmp;
+    cur->str = str;
 
     // TODO: unescaping
     cur->len = (int)(e - b);
-    memcpy(cur->str, b, cur->len);
+    memcpy(str, b, cur->len);
     tmp += cur->len;
 
     return cur;

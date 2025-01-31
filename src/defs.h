@@ -72,8 +72,8 @@ struct FormattedStr {
     bool bold;
     bool italic;
     int len;
+    char const *str;
     FormattedStr const *next;
-    char str[];
 };
 
 struct PResult {
@@ -90,3 +90,30 @@ struct PResults {
 };
 
 PResults processResults(Results res);
+
+struct FontDef {
+    int font_size;
+    unsigned color;
+};
+
+struct Draw {
+    int x;
+    int y;
+    int w;
+    int h;
+    int off;
+};
+
+struct DrawList {
+    Draw *items;
+    int count;
+};
+
+int text_init();
+void text_bind_texture(int texture);
+DrawList prepare(
+    FormattedStr const *text,
+    int font_size,
+    int max_width
+);
+void draw(DrawList dl, int color, int x, int y);

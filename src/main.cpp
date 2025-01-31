@@ -16,7 +16,6 @@
 
 #include"defs.h"
 #include"alloc.h"
-#include"text.h"
 
 namespace chrono = std::chrono;
 
@@ -40,6 +39,7 @@ size_t write_callback(void *contents, size_t size, size_t nmemb, Response *userp
     return chunk_len;
 }
 
+#if 0
 #include<stdio.h>
 int main() {
 #if 0
@@ -126,8 +126,8 @@ int main() {
 
     return 0;
 }
+#endif
 
-#if 0
 int main(int argc, char **argv) {
     Display *display = XOpenDisplay(NULL);
     if (display == NULL) return 1;
@@ -213,6 +213,19 @@ int main(int argc, char **argv) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 #endif
 
+    let file = fopen("response.txt", "r");
+    fseek(file, 0, SEEK_END);
+    let len = (int)ftell(file);
+    fseek(file, 0, SEEK_SET);
+    let buf = alloc(len, 6);
+    fread(buf, len, 1, file);
+    let resp = Response{ .data = buf, .len = len };
+
+    let ptmp = tmp;
+    let results = processResults(extractResults(htmlToTags(resp.data, resp.len)));
+
+    DrawList dl = prepare(results.items[0].desc, 24, 500);
+
     XMapWindow(display, window);
 
     let text = tmp;
@@ -230,24 +243,7 @@ int main(int argc, char **argv) {
         if(changed && now >= next_redraw) {
             glClear(GL_COLOR_BUFFER_BIT);
 
-
-            int colors[]{
-                0xffffff,
-                0xdfdfdf,
-                0xafafaf,
-                0x8f8f8f,
-                0x404040,
-            };
-            var fd = FontDef{ 24, false,  };
-            var x = width / 2;
-            var y = height / 2;
-            for(int a = 0; a < 5; a++) {
-                fd.color = colors[a];
-                fd.bold = a == 2;
-                text_draw(text, text_c, fd, x, y, width);
-                x += 40;
-                y -= 25;
-            }
+            draw(dl, 0xffffff, width / 2, height / 2);
 
             // what is even the point of BlitNamed if I must unbind
             // the framebuffer before using it??
@@ -275,6 +271,7 @@ int main(int argc, char **argv) {
             struct pollfd pfd = {
                 .fd = ConnectionNumber(display),
                 .events = POLLIN,
+                .revents = 0,
             };
 
             while(true) {
@@ -323,4 +320,3 @@ int main(int argc, char **argv) {
     XDestroyWindow(display, window);
     XCloseDisplay(display);
 }
-#endif
