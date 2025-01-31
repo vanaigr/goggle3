@@ -307,9 +307,9 @@ int main(int argc, char **argv) {
         let now = chrono::steady_clock::now();
         if(changed && now >= next_redraw) {
             glClearColor(
-                0.02,
-                0.02,
-                0.02,
+                0.12,
+                0.12,
+                0.12,
                 1
             );
             glClear(GL_COLOR_BUFFER_BIT);
