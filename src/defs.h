@@ -57,6 +57,8 @@ struct Result {
     str rawUrl;
     Tag const *desc;
 
+    // TODO: date
+
     // str ping;
     // str favicon;
 };
@@ -109,9 +111,15 @@ struct DrawList {
     int count;
 };
 
+struct TextLayout {
+    DrawList dl;
+    int stop_x;
+    int stop_y;
+};
+
 int text_init();
 void text_bind_texture(int texture);
-DrawList prepare(
+TextLayout prepare(
     FormattedStr const *text,
     int font_size,
     int max_width

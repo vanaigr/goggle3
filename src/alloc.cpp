@@ -7,6 +7,7 @@
 static char tmp_buf[tmp_max_c];
 
 char *tmp = tmp_buf;
+char *const tmp_beg = tmp_buf;
 char *const tmp_end = tmp_buf + tmp_max_c;
 
 char *align(char *p, int align_pow) {

@@ -224,7 +224,26 @@ int main(int argc, char **argv) {
     let ptmp = tmp;
     let results = processResults(extractResults(htmlToTags(resp.data, resp.len)));
 
-    DrawList dl = prepare(results.items[0].desc, 24, 500);
+    let &first = results.items[0];
+    let urlStr = FormattedStr{
+        .bold = false,
+        .italic = false,
+        .len = first.site_display_url.count,
+        .str = first.site_display_url.items,
+        .next = nullptr,
+    };
+    let url = prepare(&urlStr, 14, 500);
+
+    let nameStr = FormattedStr{
+        .bold = false,
+        .italic = false,
+        .len = first.title.count,
+        .str = first.title.items,
+        .next = nullptr,
+    };
+    let title = prepare(&nameStr, 24, 500);
+
+    let desc = prepare(first.desc, 14, 500);
 
     XMapWindow(display, window);
 
@@ -241,9 +260,21 @@ int main(int argc, char **argv) {
     while (1) {
         let now = chrono::steady_clock::now();
         if(changed && now >= next_redraw) {
+            glClearColor(
+                0.02,
+                0.02,
+                0.02,
+                1
+            );
             glClear(GL_COLOR_BUFFER_BIT);
 
-            draw(dl, 0xffffff, width / 2, height / 2);
+            var x = width / 2;
+            var y = height / 2;
+            draw(url.dl, 0xbdc1c6, x, y);
+            y += url.stop_y - 30;
+            draw(title.dl, 0x99c3ff, x, y);
+            y += title.stop_y - 22;
+            draw(desc.dl, 0xdddee1, x, y);
 
             // what is even the point of BlitNamed if I must unbind
             // the framebuffer before using it??

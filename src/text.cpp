@@ -232,8 +232,10 @@ static int glyphs_add(int byte_count, char const *data) {
     return off;
 }
 
-static CharInfo get_glyph(FontInfo *font_info, int code) {
+static CharInfo get_glyph(FontInfo *font_info, char ch) {
     var &fi = *font_info;
+
+    let code = (int)(unsigned char)ch;
 
     let bucket_i = code >> chars_bucket_shift;
     let in_bucket_i = code & ((1 << chars_bucket_shift) - 1);
@@ -408,7 +410,7 @@ LayoutResult lay_out(
     return { s, false };
 }
 
-DrawList prepare(
+TextLayout prepare(
     FormattedStr const *text,
     int font_size,
     int max_width
@@ -419,6 +421,7 @@ DrawList prepare(
 
     let data = (Draw*)align(tmp, 6);
     tmp = (char*)data;
+    talloc<Draw>(1024);
 
     TextState commited{
         .x = 0,
@@ -502,7 +505,14 @@ DrawList prepare(
         curStr = curStr->next;
     }
 
-    return { .items = data, .count = commited.char_c };
+    return {
+        .dl = {
+            .items = data,
+            .count = commited.char_c,
+        },
+        .stop_x = commited.x,
+        .stop_y = commited.y,
+    };
 }
 
 void draw(DrawList dl, int color, int x, int y) {
@@ -533,9 +543,9 @@ void draw(DrawList dl, int color, int x, int y) {
     ce;
     glUniform3f(
         color_u,
-        ((color      ) & 0xff) / 255.0,
+        ((color >> 16) & 0xff) / 255.0,
         ((color >>  8) & 0xff) / 255.0,
-        ((color >> 16) & 0xff) / 255.0
+        ((color      ) & 0xff) / 255.0
     );
     glUseProgram(prog);
     glDispatchCompute(dl.count, 1, 1);
