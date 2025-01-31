@@ -9,6 +9,7 @@
 
 #include"defs.h"
 #include"alloc.h"
+#include"utf/decoder.h"
 
 #define LCD 1
 
@@ -24,7 +25,7 @@ static struct {
     int cap;
 } glyphs;
 
-struct CharInfo {
+struct DisplayChar {
     int glyphs_off;
     int width, height;
     int glyph_index;
@@ -35,7 +36,7 @@ struct CharInfo {
 };
 
 constexpr int chars_bucket_shift = 8;
-using CharsBucket = std::array<CharInfo, 1 << chars_bucket_shift>;
+using CharsBucket = std::array<DisplayChar, 1 << chars_bucket_shift>;
 using Chars = std::array<CharsBucket*, 600>;
 
 struct FontInfo {
@@ -232,10 +233,8 @@ static int glyphs_add(int byte_count, char const *data) {
     return off;
 }
 
-static CharInfo get_glyph(FontInfo *font_info, char ch) {
+static DisplayChar get_glyph(FontInfo *font_info, int code) {
     var &fi = *font_info;
-
-    let code = (int)(unsigned char)ch;
 
     let bucket_i = code >> chars_bucket_shift;
     let in_bucket_i = code & ((1 << chars_bucket_shift) - 1);
@@ -264,7 +263,7 @@ static CharInfo get_glyph(FontInfo *font_info, char ch) {
         char empty;
         glyphs_add(0, &empty);
 
-        ci = CharInfo{
+        ci = DisplayChar{
             .glyphs_off = 0,
             .width = 0,
             .height = 0,
@@ -326,7 +325,7 @@ static CharInfo get_glyph(FontInfo *font_info, char ch) {
     // of pixels in the bitmap horizontally?
     // .width = (int)g->metrics.width,
 
-    ci = CharInfo{
+    ci = DisplayChar{
         .glyphs_off = off,
         .width = (int)texture_w,
         .height = (int)b.rows,
@@ -362,19 +361,19 @@ LayoutResult lay_out(
     Draw *data
 ) {
     while(s.text_i < text->len) {
-        let c = text->str[s.text_i];
+        let c = utf_ptr2CharInfo(text->str + s.text_i);
 
-        if(c == '\n') {
+        if(c.code == '\n') {
             return { s, false };
         }
-        else if(c == ' ') {
+        else if(c.code == ' ') {
             return { s, false };
         }
         else if(s.x >= max_width) {
             return { s, true };
         }
 
-        let ci = get_glyph(fi, c);
+        let ci = get_glyph(fi, c.code);
 
         if(s.prev_glyph_index != -1) {
             FT_Vector kerning;
@@ -403,7 +402,7 @@ LayoutResult lay_out(
         s.x += ci.advance;
         s.prev_glyph_index = ci.glyph_index;
         s.char_c++;
-        s.text_i++;
+        s.text_i += c.len;
         tmp = (char*)(data + s.char_c);
     }
 

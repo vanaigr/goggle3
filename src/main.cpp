@@ -26,13 +26,23 @@ struct Response {
 };
 
 size_t write_callback(void *contents, size_t size, size_t nmemb, Response *userp) {
-    let chunk_len = size * nmemb;
+    let chunk_len = (int)(size * nmemb);
     var resp = *userp;
 
-    let new_len = resp.len + chunk_len;
-    resp.data = (char*)realloc(resp.data, new_len);
-    memcpy(resp.data + resp.len, contents, chunk_len);
-    resp.len = new_len;
+    if(resp.len == 0) {
+        let new_len = std::max<int>(1, chunk_len);
+        resp.data = (char*)malloc(new_len);
+        memcpy(resp.data, contents, chunk_len);
+        resp.data[chunk_len] = 0;
+        resp.len = new_len;
+    }
+    else {
+        let new_len = (resp.len - 1) + chunk_len + 1;
+        resp.data = (char*)realloc(resp.data, new_len);
+        memcpy(resp.data + resp.len - 1, contents, chunk_len);
+        resp.data[resp.len - 1 + chunk_len] = 0;
+        resp.len = new_len;
+    }
 
     *userp = resp;
 

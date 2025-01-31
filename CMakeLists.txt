@@ -13,7 +13,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_definitions(-DGLEW_STATIC)
 
-file(GLOB SOURCES "src/*.cpp")
+file(GLOB_RECURSE SOURCES ${CMAKE_SOURCE_DIR}/src/*.cpp)
 
 # TODO: use `missing-designated-field-initializers` for clang
 add_compile_options(-Werror=missing-field-initializers)
