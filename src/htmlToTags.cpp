@@ -171,7 +171,7 @@ Tags htmlToTags(char const *data, int len) {
                 var &t = tags[tags_c];
                 tags_c++;
                 t = Tag{
-                    .begin = cur,
+                    .begin = begin,
                     .name = { nameBeg, name_c },
                     .content_beg = content_beg,
                     .content_end = content_beg,

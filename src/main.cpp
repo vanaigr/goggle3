@@ -100,7 +100,7 @@ int main() {
 #endif
 
     let ptmp = tmp;
-    let results = extractResults(htmlToTags(resp.data, resp.len));
+    let results = processResults(extractResults(htmlToTags(resp.data, resp.len)));
 
     for(var i = 0; i < results.count; i++) {
         let res = results.items[i];
@@ -110,8 +110,16 @@ int main() {
         printf("  website name is %.*s\n", res.site_name.count, res.site_name.items);
         printf(
             "  website url name is %.*s\n",
-            res.site_display_url.count, res.site_display_url.items);
-        printf("  description is %.*s\n", res.desc.count, res.desc.items);
+            res.site_display_url.count, res.site_display_url.items
+        );
+
+        printf("  description is ");
+        var dc = res.desc;
+        while(dc) {
+            printf("[%d%d]|%.*s|", dc->bold, dc->italic, dc->len, dc->str);
+            dc = dc->next;
+        }
+        printf("\n");
     }
 
     tmp = ptmp;

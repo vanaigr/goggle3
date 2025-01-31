@@ -55,7 +55,7 @@ void tryAddResult(Results &res, Tag *begin, Attr const *attrs) {
 
     let &cite = *findFirstName(&websiteNameTag + 1, a.descendants_e, STR("cite"));
 
-    str desc = { nullptr, 0 };
+    var desc = (Tag const *)nullptr;
 
     var cur = first_cont;
     while(true) {
@@ -67,14 +67,14 @@ void tryAddResult(Results &res, Tag *begin, Attr const *attrs) {
         var c = cur;
         gotoFirstChild(c, "div");
         if(c->descendants_e == c + 1) {
-            desc = { c->content_beg, (int)(c->content_end - c->content_beg) };
+            desc = c;
             break;
         }
         else if(c->descendants_e > c + 1) {
             let prev_c = c;
             c = c + 1;
             if(prev_c->descendants_e == c->descendants_e && streq(c->name, STR("span"))) {
-                desc = { c->content_beg, (int)(c->content_end - c->content_beg) };
+                desc = c;
                 break;
             }
         }
@@ -95,10 +95,10 @@ void tryAddResult(Results &res, Tag *begin, Attr const *attrs) {
     }
 
     res.items[res.count++] = {
-        .title = mkstr(titleTag.content_beg, titleTag.content_end),
-        .site_name = mkstr(websiteNameTag.content_beg, websiteNameTag.content_end),
-        .site_display_url = mkstr(cite.content_beg, cite.content_end),
-        .url = href,
+        .title = &titleTag,
+        .site_name = &websiteNameTag,
+        .site_display_url = &cite,
+        .rawUrl = href,
         .desc = desc,
     };
 }

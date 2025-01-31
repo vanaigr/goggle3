@@ -51,11 +51,11 @@ Tags htmlToTags(char const *data, int len);
 
 
 struct Result {
-    str title;
-    str site_name;
-    str site_display_url;
-    str url;
-    str desc;
+    Tag const *title;
+    Tag const *site_name;
+    Tag const *site_display_url;
+    str rawUrl;
+    Tag const *desc;
 
     // str ping;
     // str favicon;
@@ -67,3 +67,26 @@ struct Results {
 };
 
 Results extractResults(Tags tags);
+
+struct FormattedStr {
+    bool bold;
+    bool italic;
+    int len;
+    FormattedStr const *next;
+    char str[];
+};
+
+struct PResult {
+    str title;
+    str site_name;
+    str site_display_url;
+    str url;
+    FormattedStr const *desc;
+};
+
+struct PResults {
+    PResult *items;
+    int count;
+};
+
+PResults processResults(Results res);
