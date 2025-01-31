@@ -120,7 +120,7 @@ struct TextLayout {
 int text_init();
 void text_bind_texture(int texture);
 TextLayout prepare(
-    FormattedStr const *text,
+    FormattedStr const &text,
     int font_size,
     int max_width
 );

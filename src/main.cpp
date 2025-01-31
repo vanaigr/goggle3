@@ -181,9 +181,6 @@ int main(int argc, char **argv) {
     }
     ce;
 
-    let width_fac = 2.0 / width;
-    let height_fac = 2.0 / height;
-
     GLuint fb;
     glGenFramebuffers(1, &fb);
     glBindFramebuffer(GL_FRAMEBUFFER, fb);
@@ -221,29 +218,68 @@ int main(int argc, char **argv) {
     fread(buf, len, 1, file);
     let resp = Response{ .data = buf, .len = len };
 
-    let ptmp = tmp;
     let results = processResults(extractResults(htmlToTags(resp.data, resp.len)));
 
-    let &first = results.items[0];
-    let urlStr = FormattedStr{
-        .bold = false,
-        .italic = false,
-        .len = first.site_display_url.count,
-        .str = first.site_display_url.items,
-        .next = nullptr,
-    };
-    let url = prepare(&urlStr, 14, 500);
+    let gap = 16;
+    let cols = std::max((width - gap) / (400 + gap), 1);
+    let item_w = (width - (cols + 1) * gap) / cols;
 
-    let nameStr = FormattedStr{
-        .bold = false,
-        .italic = false,
-        .len = first.title.count,
-        .str = first.title.items,
-        .next = nullptr,
+    struct CalculatedText {
+        DrawList url;
+        DrawList title;
+        DrawList desc;
+        int titleOff;
+        int descOff;
     };
-    let title = prepare(&nameStr, 24, 500);
 
-    let desc = prepare(first.desc, 14, 500);
+    let calculatedTexts = talloc<CalculatedText>(results.count);
+    let calculatedRowHeights = talloc<int>(results.count / 3 + 1);
+
+    var row = 0;
+    var col = 0;
+    for(var i = 0; i < results.count; i++) {
+        if(col == 0) {
+            calculatedRowHeights[row] = 0;
+        }
+
+        let &res = results.items[i];
+        let urlStr = FormattedStr{
+            .bold = false,
+            .italic = false,
+            .len = res.site_display_url.count,
+            .str = res.site_display_url.items,
+            .next = nullptr,
+        };
+        let url = prepare(urlStr, 14, item_w);
+
+        let nameStr = FormattedStr{
+            .bold = false,
+            .italic = false,
+            .len = res.title.count,
+            .str = res.title.items,
+            .next = nullptr,
+        };
+        let title = prepare(nameStr, 20, item_w);
+
+        let desc = prepare(*res.desc, 14, item_w);
+
+        let t = calculatedTexts[i] = {
+            .url = url.dl,
+            .title = title.dl,
+            .desc = desc.dl,
+            .titleOff = url.stop_y - 4,
+            .descOff = title.stop_y - 8,
+        };
+        let totalHeight = -(t.titleOff + t.descOff + desc.stop_y);
+
+        calculatedRowHeights[row] = std::max(calculatedRowHeights[row], totalHeight);
+
+        col++;
+        if(col == cols) {
+            row++;
+            col = 0;
+        }
+    }
 
     XMapWindow(display, window);
 
@@ -268,13 +304,31 @@ int main(int argc, char **argv) {
             );
             glClear(GL_COLOR_BUFFER_BIT);
 
-            var x = width / 2;
-            var y = height / 2;
-            draw(url.dl, 0xbdc1c6, x, y);
-            y += url.stop_y - 30;
-            draw(title.dl, 0x99c3ff, x, y);
-            y += title.stop_y - 22;
-            draw(desc.dl, 0xdddee1, x, y);
+            var x = gap;
+            var y = height - gap;
+
+            var row = 0;
+            var col = 0;
+            for(var i = 0; i < results.count; i++) {
+                let t = calculatedTexts[i];
+                var cy = y;
+
+                draw(t.url, 0xbdc1c6, x, cy);
+                cy += t.titleOff;
+                draw(t.title, 0x99c3ff, x, cy);
+                cy += t.descOff;
+                draw(t.desc, 0xdddee1, x, cy);
+
+                x += item_w + gap;
+
+                col++;
+                if(col == cols) {
+                    row++;
+                    col = 0;
+                    y -= calculatedRowHeights[row] + gap;
+                    x = gap;
+                }
+            }
 
             // what is even the point of BlitNamed if I must unbind
             // the framebuffer before using it??

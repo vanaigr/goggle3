@@ -411,7 +411,7 @@ LayoutResult lay_out(
 }
 
 TextLayout prepare(
-    FormattedStr const *text,
+    FormattedStr const &text,
     int font_size,
     int max_width
 ) {
@@ -425,7 +425,7 @@ TextLayout prepare(
 
     TextState commited{
         .x = 0,
-        .y = 0,
+        .y = -font_size,
 
         .text_i = 0,
         .char_c = 0,
@@ -433,7 +433,7 @@ TextLayout prepare(
         .continuing = false,
     };
 
-    var curStr = text;
+    var curStr = &text;
     while(curStr) {
         commited.text_i = 0;
         commited.prev_glyph_index = -1;
