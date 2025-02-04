@@ -409,22 +409,18 @@ LayoutResult lay_out(
     return { s, false };
 }
 
-TextLayout prepare(
-    FormattedStr const &text,
-    int font_size,
-    int max_width
-) {
-    if(max_width <= 0) throw 1;
+TextLayout prepare(FormattedStr const &text, LayoutParams p) {
+    if(p.max_width <= 0) throw 1;
 
-    let dy = font_size * 1.25;
+    let dy = p.font_size * 1.25;
 
     let data = (Draw*)align(tmp, 6);
     tmp = (char*)data;
     talloc<Draw>(1024);
 
     TextState commited{
-        .x = 0,
-        .y = -font_size,
+        .x = p.begin_x,
+        .y = p.begin_y,
 
         .text_i = 0,
         .char_c = 0,
@@ -437,7 +433,7 @@ TextLayout prepare(
         commited.text_i = 0;
         commited.prev_glyph_index = -1;
         commited.continuing = false;
-        let fi = get_font_info(font_size, curStr->bold, curStr->italic);
+        let fi = get_font_info(p.font_size, curStr->bold, curStr->italic);
 
         while(commited.text_i < curStr->len) {
             let c = curStr->str[commited.text_i];
@@ -458,7 +454,7 @@ TextLayout prepare(
                     let c = curStr->str[s.text_i];
                     if(c != ' ') break;
 
-                    if(s.x >= max_width || s.x + ci.width > max_width) {
+                    if(s.x >= p.max_width || s.x + ci.width > p.max_width) {
                         s.x = 0;
                         s.y -= dy;
                         s.prev_glyph_index = -1;
@@ -474,7 +470,7 @@ TextLayout prepare(
                 commited = s;
             }
             else {
-                var res = lay_out(commited, curStr, fi, max_width, data);
+                var res = lay_out(commited, curStr, fi, p.max_width, data);
                 if(res.cutoff) {
                     if(res.state.continuing) {
                         res.state.x = 0;
@@ -487,9 +483,9 @@ TextLayout prepare(
                         cand.y -= dy;
                         cand.prev_glyph_index = -1;
 
-                        res = lay_out(cand, curStr, fi, max_width, data);
+                        res = lay_out(cand, curStr, fi, p.max_width, data);
                         if(res.cutoff) {
-                            res.state.x = max_width;
+                            res.state.x = p.max_width;
                             res.state.y -= dy;
                             res.state.prev_glyph_index = -1;
                             res.state.continuing = true;

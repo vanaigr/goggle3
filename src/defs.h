@@ -117,13 +117,16 @@ struct TextLayout {
     int stop_y;
 };
 
+struct LayoutParams {
+    int font_size;
+    int max_width;
+    int begin_x;
+    int begin_y;
+};
+
 int text_init();
 void text_bind_texture(int texture);
-TextLayout prepare(
-    FormattedStr const &text,
-    int font_size,
-    int max_width
-);
+TextLayout prepare(FormattedStr const &text, LayoutParams params);
 void draw(DrawList dl, int color, int x, int y);
 
 bool open_url(str url);

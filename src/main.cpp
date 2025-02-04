@@ -1,6 +1,7 @@
 #include<X11/Xlib.h>
 #include<X11/Xutil.h>
 #include<X11/Xatom.h>
+#include <array>
 #include<poll.h>
 #include<cmath>
 #include<GL/glew.h>
@@ -142,6 +143,17 @@ int main() {
 }
 #endif
 
+static let open_display_keys = std::array{
+    STR("·"), STR("S"), STR("J"), STR("K"), STR("D"), STR("L"),
+    STR("N"), STR("I"), STR("E"), STR("W"), STR("O"),
+    STR("M"), STR("U"), STR("V"), STR("A"), STR("Q"), STR("Z")
+};
+static let open_hotkeys = std::array{
+    STR(" "), STR("s"), STR("j"), STR("k"), STR("d"), STR("l"),
+    STR("n"), STR("i"), STR("e"), STR("w"), STR("o"),
+    STR("m"), STR("u"), STR("v"), STR("a"), STR("q"), STR("z")
+};
+
 int main(int argc, char **argv) {
     Display *display = XOpenDisplay(NULL);
     if (display == NULL) return 1;
@@ -240,6 +252,7 @@ int main(int argc, char **argv) {
 
     struct CalculatedText {
         DrawList url;
+        DrawList key;
         DrawList title;
         DrawList desc;
         int titleOff;
@@ -257,6 +270,7 @@ int main(int argc, char **argv) {
         }
 
         let &res = results.items[i];
+
         let urlStr = FormattedStr{
             .bold = false,
             .italic = false,
@@ -264,7 +278,25 @@ int main(int argc, char **argv) {
             .str = res.site_display_url.items,
             .next = nullptr,
         };
-        let url = prepare(urlStr, 14, item_w);
+        let url = prepare(urlStr, { 14, item_w, 0, -14 });
+
+        TextLayout key{};
+        var offX = 0;
+        var offY = -28;
+        if(i < open_display_keys.size()) {
+            let keyStr = FormattedStr{
+                .bold = false,
+                .italic = false,
+                .len = open_display_keys[i].count,
+                .str = open_display_keys[i].items,
+                .next = nullptr
+            };
+            key = prepare(keyStr, { 28, item_w, 0, -28 });
+            // hope it's one line. Otherwise we need to provide a begin_y
+            // for the next call, and the default value for it can't be easily made.
+            offX = key.stop_x + 7;
+            offY = key.stop_y;
+        }
 
         let nameStr = FormattedStr{
             .bold = false,
@@ -273,12 +305,13 @@ int main(int argc, char **argv) {
             .str = res.title.items,
             .next = nullptr,
         };
-        let title = prepare(nameStr, 20, item_w);
+        let title = prepare(nameStr, { 20, item_w, offX, offY });
 
-        let desc = prepare(*res.desc, 14, item_w);
+        let desc = prepare(*res.desc, { 14, item_w, 0, -14 });
 
         let t = calculatedTexts[i] = {
             .url = url.dl,
+            .key = key.dl,
             .title = title.dl,
             .desc = desc.dl,
             .titleOff = url.stop_y - 4,
@@ -329,6 +362,7 @@ int main(int argc, char **argv) {
 
                 draw(t.url, 0xbdc1c6, x, cy);
                 cy += t.titleOff;
+                draw(t.key, 0xfff582, x, cy);
                 draw(t.title, 0x99c3ff, x, cy);
                 cy += t.descOff;
                 draw(t.desc, 0xdddee1, x, cy);
@@ -403,15 +437,26 @@ int main(int argc, char **argv) {
                     text[text_c++] = '\n';
                 }
                 else {
-                    if(open_url(STR("https://www.google.com"))) {
-                        exit(0);
-                    }
-
                     KeySym keysym;
                     XComposeStatus compose;
-                    let p = text + text_c;
-                    int len = XLookupString(&event.xkey, p, text_end - p, &keysym, &compose);
-                    text_c += len;
+                    int len = XLookupString(
+                        &event.xkey,
+                        tmp,
+                        tmp_end - tmp,
+                        &keysym,
+                        &compose
+                    );
+                    let typed = str{ tmp, len };
+
+                    for(var i = 0; i < results.count; i++) {
+                        if(streq(typed, open_hotkeys[i])) {
+                            if(open_url(results.items[i].url)) {
+                                exit(0);
+                            }
+                            break;
+                        }
+                    }
+
                 }
                 changed = true;
             }
