@@ -325,13 +325,15 @@ int main(int argc, char **argv) {
                 draw(t.title, 0x99c3ff, x, y);
                 draw(t.desc, 0xdddee1, x, y);
 
+                //rect(x, y - target.rowHeights[row], item_w, target.rowHeights[row]);
+
                 x += item_w + gap;
 
                 col++;
                 if(col == cols) {
+                    y -= target.rowHeights[row] + gap;
                     row++;
                     col = 0;
-                    y -= target.rowHeights[row] + gap;
                     x = gap;
                 }
             }

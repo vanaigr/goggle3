@@ -19,6 +19,9 @@ static GLuint chars_buf;
 static GLuint prog;
 static GLuint color_u;
 
+static GLuint prog2;
+static GLuint bbuf;
+
 static struct {
     GLuint buf;
     int size;
@@ -154,8 +157,8 @@ int text_init() {
                 // values.
                 if(any(greaterThan(alpha, vec3(0)))) {
                     vec4 prev_color = imageLoad(outImg, coord);
-                    vec4 color = vec4(mix(prev_color.rgb, color, alpha), 1);
-                    imageStore(outImg, coord, color);
+                    vec4 col = vec4(mix(prev_color.rgb, color, alpha), 1);
+                    imageStore(outImg, coord, col);
                 }
     )"
     #else
@@ -174,6 +177,61 @@ int text_init() {
     glAttachShader(prog, compute);
     glLinkProgram(prog);
     programReport(prog);
+    ce;
+
+    {
+        let compute = glCreateShader(GL_COMPUTE_SHADER);
+        let compute_src = R"(
+            #version 440
+
+            layout(local_size_x = 64, local_size_y = 1) in;
+            layout(rgba32f, binding = 1) coherent uniform image2D outImg;
+
+            layout(std430, binding = 3) buffer Rectangles {
+                // who needs structs if they must be aligned?
+                int data[];
+            };
+
+            void main() {
+                int groupId = int(gl_WorkGroupID.x);
+
+                ivec4 rectangle = ivec4(
+                    data[groupId * 4 + 0],
+                    data[groupId * 4 + 1],
+                    data[groupId * 4 + 2],
+                    data[groupId * 4 + 3]
+                );
+
+                int total = rectangle.b * rectangle.a;
+
+                int off = int(gl_LocalInvocationIndex.x);
+                for(; off < total; off += 64) {
+                    int x = off % rectangle.b;
+                    int y = off / rectangle.b;
+                    ivec2 coord = rectangle.xy + ivec2(x, y);
+
+                    vec3 color = vec3(1, 0, 0);
+                    vec4 prev_color = imageLoad(outImg, coord);
+                    vec4 col = vec4(mix(prev_color.rgb, color, 0.1), 1);
+                    imageStore(outImg, coord, col);
+                }
+            }
+        )";
+
+        glShaderSource(compute, 1, &compute_src, nullptr);
+        glCompileShader(compute);
+        shaderReport(compute, "compute");
+
+        prog2 = glCreateProgram();
+        glAttachShader(prog2, compute);
+        glLinkProgram(prog2);
+        programReport(prog2);
+        ce;
+    }
+
+    glCreateBuffers(1, &bbuf);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, bbuf);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, bbuf);
     ce;
 
     glUseProgram(prog);
@@ -535,14 +593,26 @@ void draw(DrawList dl, int color, int x, int y) {
     tmp = ptmp;
 
     ce;
+    glUseProgram(prog);
     glUniform3f(
         color_u,
         ((color >> 16) & 0xff) / 255.0,
         ((color >>  8) & 0xff) / 255.0,
         ((color      ) & 0xff) / 255.0
     );
-    glUseProgram(prog);
     glDispatchCompute(dl.count, 1, 1);
     glMemoryBarrier(GL_ALL_BARRIER_BITS);
+    ce;
+}
 
+void rect(int x, int y, int w, int h) {
+    int data[]{ x, y, w, h };
+    glNamedBufferData(bbuf, 16, data, GL_DYNAMIC_DRAW);
+    ce;
+
+    ce;
+    glUseProgram(prog2);
+    glDispatchCompute(1, 1, 1);
+    glMemoryBarrier(GL_ALL_BARRIER_BITS);
+    ce;
 }
