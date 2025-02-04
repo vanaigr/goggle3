@@ -171,8 +171,9 @@ int main(int argc, char **argv) {
     int width = screen_width - 2*pad;
     int height = screen_height - bot - (what + pad_top) - pad;
 
+    let rootWindow = RootWindow(display, screen);
     Window window = XCreateSimpleWindow(
-        display, RootWindow(display, screen),
+        display, rootWindow,
         pad, pad_top, width, height,
         0, BlackPixel(display, screen), WhitePixel(display, screen)
     );
@@ -328,6 +329,24 @@ int main(int argc, char **argv) {
         }
     }
 
+    let xim = XOpenIM(display, NULL, NULL, NULL);
+    let xic = XCreateIC(
+        xim,
+        XNInputStyle,
+        XIMPreeditNothing | XIMStatusNothing,
+        XNClientWindow,
+        rootWindow,
+        NULL
+    );
+    if(!xic) {
+        fprintf(stderr, "Cannot create input context (XIC)\n");
+        XCloseIM(xim);
+        XCloseDisplay(display);
+        return 1;
+    }
+
+    XSelectInput(display, rootWindow, KeyPressMask);
+
     XMapWindow(display, window);
 
     let text = tmp;
@@ -443,54 +462,64 @@ int main(int argc, char **argv) {
             if (event.type == Expose) {
                 changed = true;
             } else if (event.type == KeyPress) {
-                if(event.xkey.keycode == 24) {
-                    // q
-                    goto exit;
-                }
-                else if(event.xkey.keycode == 22) {
-                    // backspace
-                    if(inserting) {
-                        text_c = text_c >= 1 ? text_c - 1 : 0;
-                    }
-                }
-                else if(event.xkey.keycode == 36) {
-                    // enter
-                    inserting = false;
-                }
-                else if(event.xkey.keycode == 9) {
+                if(event.xkey.keycode == 9) {
                     // escape
                     inserting = false;
                 }
-                else {
-                    KeySym keysym;
-                    XComposeStatus compose;
-                    int len = XLookupString(
-                        &event.xkey,
-                        tmp,
-                        tmp_end - tmp,
-                        &keysym,
-                        &compose
-                    );
-                    let typed = str{ tmp, len };
-
-                    if(!inserting) {
-                        if(streq(typed, STR("i"))) {
-                            inserting = true;
-                        }
-                        else {
-                            for(var i = 0; i < results.count; i++) {
-                                if(streq(typed, open_hotkeys[i])) {
-                                    if(open_url(results.items[i].url)) {
-                                        exit(0);
-                                    }
-                                    break;
-                                }
-                            }
-                        }
+                else if(inserting) {
+                    if(event.xkey.keycode == 22) {
+                        // backspace
+                        text_c = text_c >= 1 ? text_c - 1 : 0;
+                    }
+                    else if(event.xkey.keycode == 36) {
+                        // enter
+                        inserting = false;
                     }
                     else {
-                        memcpy(text + text_c, tmp, len);
+                        KeySym keysym;
+                        Status compose;
+
+                        int len = Xutf8LookupString(
+                            xic,
+                            &event.xkey,
+                            text + text_c,
+                            text_end - text,
+                            &keysym,
+                            &compose
+                        );
+                        printf("Key is: %.*s\n", len, text + text_c);
                         text_c += len;
+                    }
+                }
+                else {
+                    if(event.xkey.keycode == 24) {
+                        // q
+                        goto exit;
+                    }
+                    if(event.xkey.keycode == 31) {
+                        // i
+                        inserting = true;
+                    }
+                    else {
+                        KeySym keysym;
+                        XComposeStatus compose;
+                        int len = XLookupString(
+                            &event.xkey,
+                            tmp,
+                            tmp_end - tmp,
+                            &keysym,
+                            &compose
+                        );
+                        let typed = str{ tmp, len };
+
+                        for(var i = 0; i < results.count; i++) {
+                            if(streq(typed, open_hotkeys[i])) {
+                                if(open_url(results.items[i].url)) {
+                                    exit(0);
+                                }
+                                break;
+                            }
+                        }
                     }
                 }
                 changed = true;
