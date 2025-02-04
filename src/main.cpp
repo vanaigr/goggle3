@@ -143,9 +143,6 @@ int main() {
 #endif
 
 int main(int argc, char **argv) {
-    search_process();
-    return 0;
-
     Display *display = XOpenDisplay(NULL);
     if (display == NULL) return 1;
 
@@ -406,9 +403,8 @@ int main(int argc, char **argv) {
                     text[text_c++] = '\n';
                 }
                 else {
-                    char *argv[] = { "--new-tab", "https://www.google.com", nullptr };
-                    pid_t pid;
-                    if(posix_spawn(&pid, "/usr/local/bin/firefox", nullptr, nullptr, argv, environ)) {
+                    if(open_url(STR("https://www.google.com"))) {
+                        exit(0);
                     }
 
                     KeySym keysym;

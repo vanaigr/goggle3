@@ -126,4 +126,4 @@ TextLayout prepare(
 );
 void draw(DrawList dl, int color, int x, int y);
 
-void search_process();
+bool open_url(str url);
