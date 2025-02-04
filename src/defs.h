@@ -122,6 +122,7 @@ struct LayoutParams {
     int max_width;
     int begin_x;
     int begin_y;
+    bool wordbreak = true;
 };
 
 int text_init();

@@ -145,12 +145,12 @@ int main() {
 
 static let open_display_keys = std::array{
     STR("·"), STR("S"), STR("J"), STR("K"), STR("D"), STR("L"),
-    STR("N"), STR("I"), STR("E"), STR("W"), STR("O"),
+    STR("N"), STR("E"), STR("W"), STR("O"),
     STR("M"), STR("U"), STR("V"), STR("A"), STR("Q"), STR("Z")
 };
 static let open_hotkeys = std::array{
     STR(" "), STR("s"), STR("j"), STR("k"), STR("d"), STR("l"),
-    STR("n"), STR("i"), STR("e"), STR("w"), STR("o"),
+    STR("n"), STR("e"), STR("w"), STR("o"),
     STR("m"), STR("u"), STR("v"), STR("a"), STR("q"), STR("z")
 };
 
@@ -263,7 +263,7 @@ int main(int argc, char **argv) {
     let calculatedRowHeights = talloc<int>(results.count / 3 + 1);
 
     var row = 0;
-    var col = 0;
+    var col = 1;
     for(var i = 0; i < results.count; i++) {
         if(col == 0) {
             calculatedRowHeights[row] = 0;
@@ -332,9 +332,14 @@ int main(int argc, char **argv) {
 
     let text = tmp;
     let text_end = tmp + 4096;
-    var text_c = 5;
-    memcpy(text, "aaaaa", 5);
+    var text_c = 0;
     tmp += 4096;
+
+    var inserting = false;
+
+    let regularColor = 0xfff582;
+    let insertColor = 0x808080;
+    let didntOpenColor = 0xff0000;
 
     var next_redraw = chrono::steady_clock::now();
     let frame_time = static_cast<chrono::microseconds>(chrono::seconds(1)) / 40;
@@ -351,18 +356,18 @@ int main(int argc, char **argv) {
             );
             glClear(GL_COLOR_BUFFER_BIT);
 
-            var x = gap;
+            var x = gap + item_w + gap;
             var y = height - gap;
 
             var row = 0;
-            var col = 0;
+            var col = 1;
             for(var i = 0; i < results.count; i++) {
                 let t = calculatedTexts[i];
                 var cy = y;
 
                 draw(t.url, 0xbdc1c6, x, cy);
                 cy += t.titleOff;
-                draw(t.key, 0xfff582, x, cy);
+                draw(t.key, inserting ? insertColor : regularColor, x, cy);
                 draw(t.title, 0x99c3ff, x, cy);
                 cy += t.descOff;
                 draw(t.desc, 0xdddee1, x, cy);
@@ -376,6 +381,20 @@ int main(int argc, char **argv) {
                     y -= calculatedRowHeights[row] + gap;
                     x = gap;
                 }
+            }
+
+            {
+                let ptmp = tmp;
+                let str = FormattedStr{
+                    .bold = false,
+                    .italic = false,
+                    .len = text_c,
+                    .str = text,
+                    .next = nullptr,
+                };
+                let res = prepare(str, { 14, item_w, 0, -14, false });
+                draw(res.dl, 0xffffff, gap, height - gap);
+                tmp = ptmp;
             }
 
             // what is even the point of BlitNamed if I must unbind
@@ -430,11 +449,17 @@ int main(int argc, char **argv) {
                 }
                 else if(event.xkey.keycode == 22) {
                     // backspace
-                    text_c = text_c >= 1 ? text_c - 1 : 0;
+                    if(inserting) {
+                        text_c = text_c >= 1 ? text_c - 1 : 0;
+                    }
                 }
                 else if(event.xkey.keycode == 36) {
                     // enter
-                    text[text_c++] = '\n';
+                    inserting = false;
+                }
+                else if(event.xkey.keycode == 9) {
+                    // escape
+                    inserting = false;
                 }
                 else {
                     KeySym keysym;
@@ -448,15 +473,25 @@ int main(int argc, char **argv) {
                     );
                     let typed = str{ tmp, len };
 
-                    for(var i = 0; i < results.count; i++) {
-                        if(streq(typed, open_hotkeys[i])) {
-                            if(open_url(results.items[i].url)) {
-                                exit(0);
+                    if(!inserting) {
+                        if(streq(typed, STR("i"))) {
+                            inserting = true;
+                        }
+                        else {
+                            for(var i = 0; i < results.count; i++) {
+                                if(streq(typed, open_hotkeys[i])) {
+                                    if(open_url(results.items[i].url)) {
+                                        exit(0);
+                                    }
+                                    break;
+                                }
                             }
-                            break;
                         }
                     }
-
+                    else {
+                        memcpy(text + text_c, tmp, len);
+                        text_c += len;
+                    }
                 }
                 changed = true;
             }

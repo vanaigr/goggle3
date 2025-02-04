@@ -472,7 +472,7 @@ TextLayout prepare(FormattedStr const &text, LayoutParams p) {
             else {
                 var res = lay_out(commited, curStr, fi, p.max_width, data);
                 if(res.cutoff) {
-                    if(res.state.continuing) {
+                    if(res.state.continuing || !p.wordbreak) {
                         res.state.x = 0;
                         res.state.y -= dy;
                         res.state.prev_glyph_index = -1;
@@ -486,7 +486,6 @@ TextLayout prepare(FormattedStr const &text, LayoutParams p) {
                         res = lay_out(cand, curStr, fi, p.max_width, data);
                         if(res.cutoff) {
                             res.state.x = p.max_width;
-                            res.state.y -= dy;
                             res.state.prev_glyph_index = -1;
                             res.state.continuing = true;
                         }
