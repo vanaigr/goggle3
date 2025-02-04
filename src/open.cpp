@@ -3,7 +3,8 @@
 #include<stdlib.h>
 #include<dirent.h>
 #include<unistd.h>
-#include <sys/wait.h>
+#include<sys/wait.h>
+#include<cassert>
 
 #include"defs.h"
 #include"alloc.h"
@@ -282,33 +283,73 @@ static Json *decode(span input) {
 }
 #undef ss
 
-void search_process() {
-    /* char const *const pgrep_args[]{ "pgrep", "-o", "firefox", nullptr };
-    var pgrep_res = run_sync(pgrep_args);
-    if(pgrep_res.beg == nullptr) return;
-    {
-        var end = pgrep_res.beg;
-        while(end < pgrep_res.end && *end >= '0' && *end <= '9') end++;
-        *end++ = '\0';
-        pgrep_res.end = end;
-        tmp = end;
+static bool findWindow(Json *itp) {
+    let &it = *itp;
+    assert(it.type == array);
+
+    var cur = itp + 1;
+    let end = it.end;
+    while(cur < end) {
+        let &c = *cur;
+        if(c.type == object) {
+
+        }
     }
+}
 
-    char const *const search_args[]{ "xdotool", "search", "--pid", pgrep_res.beg, nullptr };
-    var search_res = run_sync(search_args);
-    if(search_res.beg == nullptr) return;
-    {
-        var end = search_res.beg;
-        while(end < search_res.end && *end >= '0' && *end <= '9') end++;
-        *end++ = '\0';
-        search_res.end = end;
-        tmp = end;
-    } */
+static void checkWorkspaces(Json *itp) {
+    let &it = *itp;
+    if(it.type == array) {
+        var cur = itp + 1;
+        let end = it.end;
+        while(cur < end) {
+            let &c = *cur;
+            if(c.type == object || c.type == array) {
+                checkWorkspaces(cur);
+                cur = c.end;
+            }
+            else {
+                assert(cur->type == string);
+                cur++;
+            }
+        }
+    }
+    else if(it.type == object) {
+        var isWorkspace = false;
+        var nodes = (Json*)nullptr;
+        var floatingNodes = (Json*)nullptr;
 
-    char const *const get_tree_args[]{ "i3-msg", "-t", "get_tree", nullptr };
+        var cur = itp + 1;
+        let end = it.end;
+        while(cur < end) {
+            let &c = *cur;
+            if(c.type == string) {
+                if(streq(c.name, STR("type"))) {
+                    if(streq(c.string, STR("workspace"))) {
+                        isWorkspace = true;
+                    }
+                    else break;
+                }
+                else if(streq(c.name, STR("nodes"))) {
+                    nodes = cur;
+                }
+                else if(streq(c.name, STR("floating_nodes"))) {
+                    nodes = cur;
+                }
+                cur = cur + 1;
+            }
+            else {
+                assert(c.type == object || c.type == array);
+                cur = cur->end;
+            }
+        }
+
+        if(!isWorkspace || !nodes || nodes->type != array) return;
+        findWindow(nodes);
+    }
+}
+
+void search_process() {
+    char const *const get_tree_args[]{ "i3-msg", "[class=\"firefox\"]", "focus", nullptr };
     var tree_res = run_sync(get_tree_args);
-
-    let arr = decode(tree_res);
-
-    //printf("%.*s\n", tree_res.end - tree_res.beg, tree_res.beg);
 }
