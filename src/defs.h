@@ -127,7 +127,7 @@ struct LayoutParams {
 
 int text_init();
 void text_bind_texture(int texture);
-TextLayout prepare(FormattedStr const &text, LayoutParams params);
+TextLayout prepare(FormattedStr const *text, LayoutParams params);
 void draw(DrawList dl, int color, int x, int y);
 
 bool open_url(str url);

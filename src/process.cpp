@@ -37,15 +37,21 @@ struct Props {
 
 static FormattedStr *addFormatted(char const *b, char const *e, Props props) {
     var cur = talloc<FormattedStr>(1);
-    cur->bold = props.bold;
-    cur->italic = props.italic;
+
     let str = tmp;
-    cur->str = str;
+    let len = (int)(e - b);
+    tmp += len;
 
     // TODO: unescaping
-    cur->len = (int)(e - b);
-    memcpy(str, b, cur->len);
-    tmp += cur->len;
+    memcpy(str, b, len);
+
+    *cur = {
+        .bold = props.bold,
+        .italic = props.italic,
+        .len = len,
+        .str = str,
+        .next = nullptr,
+    };
 
     return cur;
 }
@@ -95,6 +101,7 @@ static FormattedStr const **formattedInnerText(
 }
 
 static void bodystr(str chunk) {
+    fflush(stdout);
     // for now no unescaping.
     memmove(tmp, chunk.items, chunk.count);
     tmp += chunk.count;

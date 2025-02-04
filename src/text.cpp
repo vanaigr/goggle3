@@ -409,7 +409,7 @@ LayoutResult lay_out(
     return { s, false };
 }
 
-TextLayout prepare(FormattedStr const &text, LayoutParams p) {
+TextLayout prepare(FormattedStr const *text, LayoutParams p) {
     if(p.max_width <= 0) throw 1;
 
     let dy = p.font_size * 1.25;
@@ -428,7 +428,7 @@ TextLayout prepare(FormattedStr const &text, LayoutParams p) {
         .continuing = false,
     };
 
-    var curStr = &text;
+    var curStr = text;
     while(curStr) {
         commited.text_i = 0;
         commited.prev_glyph_index = -1;

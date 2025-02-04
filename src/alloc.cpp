@@ -1,5 +1,6 @@
 #include<stdint.h>
 #include<cstring>
+#include<cassert>
 // #include<stdio.h>
 #include"defs.h"
 #include"alloc.h"
@@ -20,6 +21,7 @@ char *alloc(int size, int align_pow) {
     // printf("allocated %d bytes with %d align\n", size, 1 << align_pow);
     let res = align(tmp, align_pow);
     tmp = res + size;
+    assert(tmp <= tmp_end);
     return res;
 }
 

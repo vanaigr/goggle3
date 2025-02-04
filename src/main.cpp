@@ -35,7 +35,7 @@ size_t write_callback(void *contents, size_t size, size_t nmemb, Response *userp
     var resp = *userp;
 
     if(resp.len == 0) {
-        let new_len = std::max<int>(1, chunk_len);
+        let new_len = chunk_len + 1;
         resp.data = (char*)malloc(new_len);
         memcpy(resp.data, contents, chunk_len);
         resp.data[chunk_len] = 0;
@@ -54,95 +54,6 @@ size_t write_callback(void *contents, size_t size, size_t nmemb, Response *userp
     return chunk_len;
 }
 
-#if 0
-#include<stdio.h>
-int main() {
-#if 0
-    char const url[] = "https://www.google.com/search?asearch=arc&async=use_ac:true,_fmt:prog&q=a";
-
-    let headers = curl_slist_append(nullptr, "Accept: */*");
-    // now it fails without useragent. And it has to be "valid"...
-    curl_slist_append(headers, "user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36");
-
-    CURL *curl;
-    CURLM *multi_handle;
-    int still_running;
-
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-    curl = curl_easy_init();
-    multi_handle = curl_multi_init();
-
-    if (!curl || !multi_handle) {
-        fprintf(stderr, "Failed to initialize libcurl\n");
-        return 1;
-    }
-
-    curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-    Response resp{};
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&resp);
-
-
-    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-    curl_multi_add_handle(multi_handle, curl);
-
-    do {
-        int numfds;
-        curl_multi_perform(multi_handle, &still_running);
-
-        if (still_running) {
-            curl_multi_wait(multi_handle, NULL, 0, 1000, &numfds);
-        }
-    } while (still_running);
-
-    // let file = fopen("response.txt", "w");
-    // fwrite(resp.data, resp.len, 1, file);
-    // fclose(file);
-
-    curl_multi_remove_handle(multi_handle, curl);
-    curl_easy_cleanup(curl);
-    curl_multi_cleanup(multi_handle);
-    curl_global_cleanup();
-#else
-    let file = fopen("response.txt", "r");
-    fseek(file, 0, SEEK_END);
-    let len = (int)ftell(file);
-    fseek(file, 0, SEEK_SET);
-    let buf = alloc(len, 6);
-    fread(buf, len, 1, file);
-    let resp = Response{ .data = buf, .len = len };
-#endif
-
-    let ptmp = tmp;
-    let results = processResults(extractResults(htmlToTags(resp.data, resp.len)));
-
-    for(var i = 0; i < results.count; i++) {
-        let res = results.items[i];
-
-        printf("Result %d:\n", i);
-        printf("  title is %.*s\n", res.title.count, res.title.items);
-        printf("  website name is %.*s\n", res.site_name.count, res.site_name.items);
-        printf(
-            "  website url name is %.*s\n",
-            res.site_display_url.count, res.site_display_url.items
-        );
-
-        printf("  description is ");
-        var dc = res.desc;
-        while(dc) {
-            printf("[%d%d]|%.*s|", dc->bold, dc->italic, dc->len, dc->str);
-            dc = dc->next;
-        }
-        printf("\n");
-    }
-
-    tmp = ptmp;
-
-    return 0;
-}
-#endif
-
 static let open_display_keys = std::array{
     STR("·"), STR("S"), STR("J"), STR("K"), STR("D"), STR("L"),
     STR("N"), STR("E"), STR("W"), STR("O"),
@@ -154,9 +65,111 @@ static let open_hotkeys = std::array{
     STR("m"), STR("u"), STR("v"), STR("a"), STR("q"), STR("z")
 };
 
+static int width;
+static int height;
+static constexpr let gap = 20;
+static int cols;
+static int item_w;
+
+struct CalculatedText {
+    DrawList url;
+    DrawList key;
+    DrawList title;
+    DrawList desc;
+};
+
+struct Target {
+    int count;
+    PResult *results;
+    CalculatedText *texts;
+    int *rowHeights;
+};
+
+static Target calculateTarget(Response resp) {
+    let results = processResults(extractResults(htmlToTags(resp.data, resp.len - 1)));
+
+    let calculatedTexts = talloc<CalculatedText>(results.count);
+
+    let rc = results.count / cols + 1;
+    let calculatedRowHeights = talloc<int>(rc);
+    memset(calculatedRowHeights, 0, sizeof(int) * rc);
+
+    var row = 0;
+    var col = 1;
+    for(var i = 0; i < results.count; i++) {
+        let &res = results.items[i];
+
+        let urlStr = FormattedStr{
+            .bold = false,
+            .italic = false,
+            .len = res.site_display_url.count,
+            .str = res.site_display_url.items,
+            .next = nullptr,
+        };
+        let url = prepare(&urlStr, { 14, item_w, 0, -14 });
+        let urlOff = url.stop_y - 4;
+
+        TextLayout key{};
+        var offX = 0;
+        var offY = -28;
+        if(i < open_display_keys.size()) {
+            let keyStr = FormattedStr{
+                .bold = false,
+                .italic = false,
+                .len = open_display_keys[i].count,
+                .str = open_display_keys[i].items,
+                .next = nullptr
+            };
+            key = prepare(&keyStr, { 28, item_w, 0, urlOff - 28 });
+            // hope it's one line. Otherwise we need to provide a begin_y
+            // for the next call, and the default value for it can't be easily made.
+            offX = key.stop_x + 7;
+            offY = key.stop_y;
+        }
+
+        let nameStr = FormattedStr{
+            .bold = false,
+            .italic = false,
+            .len = res.title.count,
+            .str = res.title.items,
+            .next = nullptr,
+        };
+        let title = prepare(&nameStr, { 20, item_w, offX, offY });
+        let titleOff = title.stop_y - 8;
+
+        let desc = prepare(res.desc, { 14, item_w, 0, titleOff - 14 });
+
+        let t = calculatedTexts[i] = {
+            .url = url.dl,
+            .key = key.dl,
+            .title = title.dl,
+            .desc = desc.dl,
+        };
+        let totalHeight = -desc.stop_y;
+
+        calculatedRowHeights[row] = std::max(calculatedRowHeights[row], totalHeight);
+
+        col++;
+        if(col == cols) {
+            row++;
+            col = 0;
+        }
+    }
+
+    return { results.count, results.items, calculatedTexts, calculatedRowHeights };
+}
+
 int main(int argc, char **argv) {
     Display *display = XOpenDisplay(NULL);
     if (display == NULL) return 1;
+
+    let headers = curl_slist_append(nullptr, "Accept: */*");
+    // It used to be fine, but now it fails without useragent.
+    // And it has to be "valid"...
+    curl_slist_append(headers, "user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36");
+
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    let multi_handle = curl_multi_init();
 
     int screen = DefaultScreen(display);
 
@@ -168,8 +181,8 @@ int main(int argc, char **argv) {
     int what = 20, bot = 20;
     int pad = std::min(screen_width, screen_height) / 30;
     int pad_top = std::max(0, pad - what);
-    int width = screen_width - 2*pad;
-    int height = screen_height - bot - (what + pad_top) - pad;
+    width = screen_width - 2*pad;
+    height = screen_height - bot - (what + pad_top) - pad;
 
     let rootWindow = RootWindow(display, screen);
     Window window = XCreateSimpleWindow(
@@ -237,97 +250,8 @@ int main(int argc, char **argv) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 #endif
 
-    let file = fopen("response.txt", "r");
-    fseek(file, 0, SEEK_END);
-    let len = (int)ftell(file);
-    fseek(file, 0, SEEK_SET);
-    let buf = alloc(len, 6);
-    fread(buf, len, 1, file);
-    let resp = Response{ .data = buf, .len = len };
-
-    let results = processResults(extractResults(htmlToTags(resp.data, resp.len)));
-
-    let gap = 16;
-    let cols = std::max((width - gap) / (400 + gap), 1);
-    let item_w = (width - (cols + 1) * gap) / cols;
-
-    struct CalculatedText {
-        DrawList url;
-        DrawList key;
-        DrawList title;
-        DrawList desc;
-        int titleOff;
-        int descOff;
-    };
-
-    let calculatedTexts = talloc<CalculatedText>(results.count);
-    let calculatedRowHeights = talloc<int>(results.count / 3 + 1);
-
-    var row = 0;
-    var col = 1;
-    for(var i = 0; i < results.count; i++) {
-        if(col == 0) {
-            calculatedRowHeights[row] = 0;
-        }
-
-        let &res = results.items[i];
-
-        let urlStr = FormattedStr{
-            .bold = false,
-            .italic = false,
-            .len = res.site_display_url.count,
-            .str = res.site_display_url.items,
-            .next = nullptr,
-        };
-        let url = prepare(urlStr, { 14, item_w, 0, -14 });
-
-        TextLayout key{};
-        var offX = 0;
-        var offY = -28;
-        if(i < open_display_keys.size()) {
-            let keyStr = FormattedStr{
-                .bold = false,
-                .italic = false,
-                .len = open_display_keys[i].count,
-                .str = open_display_keys[i].items,
-                .next = nullptr
-            };
-            key = prepare(keyStr, { 28, item_w, 0, -28 });
-            // hope it's one line. Otherwise we need to provide a begin_y
-            // for the next call, and the default value for it can't be easily made.
-            offX = key.stop_x + 7;
-            offY = key.stop_y;
-        }
-
-        let nameStr = FormattedStr{
-            .bold = false,
-            .italic = false,
-            .len = res.title.count,
-            .str = res.title.items,
-            .next = nullptr,
-        };
-        let title = prepare(nameStr, { 20, item_w, offX, offY });
-
-        let desc = prepare(*res.desc, { 14, item_w, 0, -14 });
-
-        let t = calculatedTexts[i] = {
-            .url = url.dl,
-            .key = key.dl,
-            .title = title.dl,
-            .desc = desc.dl,
-            .titleOff = url.stop_y - 4,
-            .descOff = title.stop_y - 8,
-        };
-        let totalHeight = -(t.titleOff + t.descOff + desc.stop_y);
-
-        calculatedRowHeights[row] = std::max(calculatedRowHeights[row], totalHeight);
-
-        col++;
-        if(col == cols) {
-            row++;
-            col = 0;
-        }
-    }
+    cols = std::max((width - gap) / (400 + gap), 1);
+    item_w = (width - (cols + 1) * gap) / cols;
 
     let xim = XOpenIM(display, NULL, NULL, NULL);
     let xic = XCreateIC(
@@ -354,6 +278,19 @@ int main(int argc, char **argv) {
     var text_c = 0;
     tmp += 4096;
 
+    var response = Response{};
+
+    enum ResponseStatus {
+        done,
+        processing,
+    };
+    var responseStatus = done;
+    var request = (CURL *){};
+
+    var targetAllocBegin = tmp;
+    var targetBuffer = Response{};
+    var target = Target{};
+
     var inserting = false;
 
     let regularColor = 0xfff582;
@@ -365,8 +302,8 @@ int main(int argc, char **argv) {
 
     bool changed = true;
     while (1) {
-        let now = chrono::steady_clock::now();
-        if(changed && now >= next_redraw) {
+        let frame_start = chrono::steady_clock::now();
+        if(changed && frame_start >= next_redraw) {
             glClearColor(
                 0.12,
                 0.12,
@@ -380,16 +317,13 @@ int main(int argc, char **argv) {
 
             var row = 0;
             var col = 1;
-            for(var i = 0; i < results.count; i++) {
-                let t = calculatedTexts[i];
-                var cy = y;
+            for(var i = 0; i < target.count; i++) {
+                let t = target.texts[i];
 
-                draw(t.url, 0xbdc1c6, x, cy);
-                cy += t.titleOff;
-                draw(t.key, inserting ? insertColor : regularColor, x, cy);
-                draw(t.title, 0x99c3ff, x, cy);
-                cy += t.descOff;
-                draw(t.desc, 0xdddee1, x, cy);
+                draw(t.url, 0xbdc1c6, x, y);
+                draw(t.key, inserting ? insertColor : regularColor, x, y);
+                draw(t.title, 0x99c3ff, x, y);
+                draw(t.desc, 0xdddee1, x, y);
 
                 x += item_w + gap;
 
@@ -397,7 +331,7 @@ int main(int argc, char **argv) {
                 if(col == cols) {
                     row++;
                     col = 0;
-                    y -= calculatedRowHeights[row] + gap;
+                    y -= target.rowHeights[row] + gap;
                     x = gap;
                 }
             }
@@ -411,7 +345,7 @@ int main(int argc, char **argv) {
                     .str = text,
                     .next = nullptr,
                 };
-                let res = prepare(str, { 14, item_w, 0, -14, false });
+                let res = prepare(&str, { 14, item_w, 0, -14, false });
                 draw(res.dl, 0xffffff, gap, height - gap);
                 tmp = ptmp;
             }
@@ -432,102 +366,168 @@ int main(int argc, char **argv) {
             ce;
 
             next_redraw += frame_time;
-            if(next_redraw < now && now - next_redraw >= frame_time) {
-                next_redraw = now;
+            if(next_redraw < frame_start && frame_start - next_redraw >= frame_time) {
+                next_redraw = frame_start;
             }
             changed = false;
         }
 
-        if(changed && XPending(display) == 0) {
-            struct pollfd pfd = {
-                .fd = ConnectionNumber(display),
-                .events = POLLIN,
-                .revents = 0,
-            };
+        while(true) {
+            if(responseStatus == processing) {
+                int left_running;
+                curl_multi_perform(multi_handle, &left_running);
+                responseStatus = left_running > 0 ? processing : done;
 
-            while(true) {
-                let now = chrono::steady_clock::now();
-                let timeout = chrono::duration_cast<chrono::milliseconds>(
-                    next_redraw - now
-                ).count();
-                if(timeout <= 0 || poll(&pfd, 1, timeout) > 0) {
-                    break;
+                if(responseStatus == done) {
+                    // In case of an error (e.g. with url having spaces)
+                    // we don't receive anything but complete without errors.
+                    // Maybe it does set a flag somewhere, but how do I know?
+                    if(response.data != nullptr) {
+                        tmp = targetAllocBegin;
+
+                        free(targetBuffer.data);
+                        targetBuffer = response;
+                        response = {};
+
+                        target = calculateTarget(targetBuffer);
+                        changed = true;
+                    }
                 }
             }
-        }
 
-        while(!changed || XPending(display) > 0) {
-            XEvent event;
-            XNextEvent(display, &event);
-            if (event.type == Expose) {
-                changed = true;
-            } else if (event.type == KeyPress) {
-                if(event.xkey.keycode == 9) {
-                    // escape
-                    inserting = false;
-                }
-                else if(inserting) {
-                    if(event.xkey.keycode == 22) {
-                        // backspace
-                        text_c = text_c >= 1 ? text_c - 1 : 0;
-                    }
-                    else if(event.xkey.keycode == 36) {
-                        // enter
+
+            while(XPending(display) > 0) {
+                XEvent event;
+                XNextEvent(display, &event);
+                if (event.type == Expose) {
+                    changed = true;
+                } else if (event.type == KeyPress) {
+                    if(event.xkey.keycode == 9) {
+                        // escape
                         inserting = false;
                     }
-                    else {
-                        KeySym keysym;
-                        Status compose;
+                    else if(inserting) {
+                        if(event.xkey.keycode == 22) {
+                            // backspace
+                            text_c = text_c >= 1 ? text_c - 1 : 0;
+                        }
+                        else if(event.xkey.keycode == 36) {
+                            // enter
+                            inserting = false;
 
-                        int len = Xutf8LookupString(
-                            xic,
-                            &event.xkey,
-                            text + text_c,
-                            text_end - text,
-                            &keysym,
-                            &compose
-                        );
-                        printf("Key is: %.*s\n", len, text + text_c);
-                        text_c += len;
-                    }
-                }
-                else {
-                    if(event.xkey.keycode == 24) {
-                        // q
-                        goto exit;
-                    }
-                    if(event.xkey.keycode == 31) {
-                        // i
-                        inserting = true;
+                            if(request) {
+                                curl_multi_remove_handle(multi_handle, request);
+                                curl_easy_cleanup(request);
+                            }
+                            free(response.data);
+                            response = {};
+
+                            request = curl_easy_init();
+
+                            curl_easy_setopt(request, CURLOPT_HTTPHEADER, headers);
+                            curl_easy_setopt(request, CURLOPT_WRITEFUNCTION, write_callback);
+                            curl_easy_setopt(request, CURLOPT_VERBOSE, 1L);
+
+                            let url = STR("https://www.google.com/search?asearch=arc&async=use_ac:true,_fmt:prog&q=");
+                            memcpy(tmp, url.items, url.count);
+                            memcpy(tmp + url.count, text, text_c);
+                            *(tmp + url.count + text_c) = '\0';
+
+                            curl_easy_setopt(request, CURLOPT_URL, tmp);
+                            curl_easy_setopt(request, CURLOPT_WRITEDATA, (void *)&response);
+
+                            curl_multi_add_handle(multi_handle, request);
+
+                            responseStatus = processing;
+                        }
+                        else {
+                            KeySym keysym;
+                            Status compose;
+
+                            int len = Xutf8LookupString(
+                                xic,
+                                &event.xkey,
+                                text + text_c,
+                                text_end - text,
+                                &keysym,
+                                &compose
+                            );
+                            text_c += len;
+                        }
                     }
                     else {
-                        KeySym keysym;
-                        XComposeStatus compose;
-                        int len = XLookupString(
-                            &event.xkey,
-                            tmp,
-                            tmp_end - tmp,
-                            &keysym,
-                            &compose
-                        );
-                        let typed = str{ tmp, len };
+                        if(event.xkey.keycode == 24) {
+                            // q
+                            goto exit;
+                        }
+                        if(event.xkey.keycode == 31) {
+                            // i
+                            inserting = true;
+                        }
+                        else {
+                            KeySym keysym;
+                            XComposeStatus compose;
+                            int len = XLookupString(
+                                &event.xkey,
+                                tmp,
+                                tmp_end - tmp,
+                                &keysym,
+                                &compose
+                            );
+                            let typed = str{ tmp, len };
 
-                        for(var i = 0; i < results.count; i++) {
-                            if(streq(typed, open_hotkeys[i])) {
-                                if(open_url(results.items[i].url)) {
-                                    exit(0);
+                            for(var i = 0; i < target.count; i++) {
+                                if(streq(typed, open_hotkeys[i])) {
+                                    if(open_url(target.results[i].url)) {
+                                        exit(0);
+                                    }
+                                    break;
                                 }
-                                break;
                             }
                         }
                     }
+                    changed = true;
                 }
-                changed = true;
+            }
+
+            int timeout;
+            if(changed) {
+                let now = chrono::steady_clock::now();
+                let d = next_redraw - now;
+                timeout = chrono::duration_cast<chrono::milliseconds>(d).count();
+                if(timeout <= 0) {
+                    break;
+                }
+            }
+            else {
+                timeout = -1;
+            }
+
+            let wait_for_x11 = XPending(display) == 0;
+            let wait_for_curl = responseStatus == processing;
+            if((wait_for_curl && wait_for_x11) || !wait_for_curl) {
+                curl_waitfd pfd[1];
+                int pfd_count = 0;
+                if(wait_for_x11) {
+                    pfd[pfd_count++] = {
+                        .fd = ConnectionNumber(display),
+                        .events = POLLIN,
+                        .revents = 0,
+                    };
+                }
+
+                // TODO: loop until number of changed descriptors is > 0
+                curl_multi_wait(multi_handle, pfd, pfd_count, 1000, nullptr);
             }
         }
     }
 
     exit:
+
+    if(request) curl_multi_remove_handle(multi_handle, request);
+    curl_easy_cleanup(request);
+    curl_multi_cleanup(multi_handle);
+    curl_global_cleanup();
 
     XDestroyWindow(display, window);
     XCloseDisplay(display);
