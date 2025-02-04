@@ -14,8 +14,12 @@
 #include<algorithm>
 #include<chrono>
 
+#include<spawn.h>
+
 #include"defs.h"
 #include"alloc.h"
+
+extern char **environ;
 
 namespace chrono = std::chrono;
 
@@ -139,6 +143,9 @@ int main() {
 #endif
 
 int main(int argc, char **argv) {
+    search_process();
+    return 0;
+
     Display *display = XOpenDisplay(NULL);
     if (display == NULL) return 1;
 
@@ -399,6 +406,11 @@ int main(int argc, char **argv) {
                     text[text_c++] = '\n';
                 }
                 else {
+                    char *argv[] = { "--new-tab", "https://www.google.com", nullptr };
+                    pid_t pid;
+                    if(posix_spawn(&pid, "/usr/local/bin/firefox", nullptr, nullptr, argv, environ)) {
+                    }
+
                     KeySym keysym;
                     XComposeStatus compose;
                     let p = text + text_c;

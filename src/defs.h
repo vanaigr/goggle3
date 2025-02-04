@@ -125,3 +125,5 @@ TextLayout prepare(
     int max_width
 );
 void draw(DrawList dl, int color, int x, int y);
+
+void search_process();
