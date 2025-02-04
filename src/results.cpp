@@ -28,7 +28,7 @@ void tryAddResult(Results &res, Tag *begin, Attr const *attrs) {
         var i = container->attrs_beg;
         let end = container->attrs_end;
         while(i < end) {
-            if(streq(attrs[i].name, STR("data-rpos"))) break;
+            if(streq(attrs[i].name, STR("jscontroller"))) break;
             i++;
         }
 
@@ -36,7 +36,6 @@ void tryAddResult(Results &res, Tag *begin, Attr const *attrs) {
         gotoFirstChild(container, "div");
     }
 
-    gotoFirstChild(container, "div");
     gotoFirstChild(container, "div");
 
     var first_cont = container;

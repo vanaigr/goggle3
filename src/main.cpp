@@ -86,6 +86,10 @@ struct Target {
 };
 
 static Target calculateTarget(Response resp) {
+    // let file = fopen("response.txt", "w");
+    // fwrite(resp.data, resp.len, 1, file);
+    // fclose(file);
+
     let results = processResults(extractResults(htmlToTags(resp.data, resp.len - 1)));
 
     let calculatedTexts = talloc<CalculatedText>(results.count);
@@ -431,9 +435,34 @@ int main(int argc, char **argv) {
                             curl_easy_setopt(request, CURLOPT_VERBOSE, 1L);
 
                             let url = STR("https://www.google.com/search?asearch=arc&async=use_ac:true,_fmt:prog&q=");
+
                             memcpy(tmp, url.items, url.count);
-                            memcpy(tmp + url.count, text, text_c);
-                            *(tmp + url.count + text_c) = '\0';
+
+                            let escaped = STR(":/?#[]@!$&'()*+,;=");
+                            let hex = "01234567890ABCDEF";
+                            let eend = escaped.items + escaped.count;
+
+                            var out = tmp + url.count;
+                            for(var i = 0; i < text_c; i++) {
+                                let c = text[i];
+                                let it = find(
+                                    escaped.items,
+                                    eend,
+                                    c
+                                );
+                                if(it != eend) {
+                                    *out++ = '%';
+                                    *out++ = hex[c & 0xf];
+                                    *out++ = hex[(c >> 4) & 0xf];
+                                }
+                                else if(c == ' ') {
+                                    *out++ = '+';
+                                }
+                                else {
+                                    *out++ = c;
+                                }
+                            }
+                            *out = '\0';
 
                             curl_easy_setopt(request, CURLOPT_URL, tmp);
                             curl_easy_setopt(request, CURLOPT_WRITEDATA, (void *)&response);
