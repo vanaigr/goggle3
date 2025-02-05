@@ -111,9 +111,6 @@ static PResult process(Result r) {
     let titleBeg = tmp;
     innerText(r.title, bodystr);
     let titleEnd = tmp;
-    let siteNameBeg = tmp;
-    innerText(r.site_name, bodystr);
-    let siteNameEnd = tmp;
 
     let siteDisplayUrlBeg = tmp;
     innerText(r.site_display_url, bodystr);
@@ -124,7 +121,6 @@ static PResult process(Result r) {
 
     return {
         .title = mkstr(titleBeg, titleEnd),
-        .site_name = mkstr(siteNameBeg, siteNameEnd),
         .site_display_url = mkstr(siteDisplayUrlBeg, siteDisplayUrlEnd),
         .url = r.rawUrl,
         .desc = desc,

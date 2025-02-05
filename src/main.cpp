@@ -85,7 +85,7 @@ struct Target {
     int *rowHeights;
 };
 
-#define READ_FILE 1
+#define READ_FILE 0
 
 static Target calculateTarget(Response resp) {
     #if not(READ_FILE)
@@ -115,7 +115,7 @@ static Target calculateTarget(Response resp) {
             .next = nullptr,
         };
         let url = prepare(&urlStr, { 14, item_w, 0, -14 });
-        let urlOff = url.stop_y - 4;
+        let urlOff = url.stop_y - 2;
 
         TextLayout key{};
         var offX = 0;
