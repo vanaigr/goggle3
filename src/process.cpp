@@ -24,7 +24,7 @@ static void innerText(Tag const *t, P const &processor) {
         processor(str{ text_begin, (int)(d->begin - text_begin) });
         innerText(d, processor);
         text_begin = d->end;
-        d++;
+        d = d->descendants_e;
     }
 
     processor(str{ text_begin, (int)(t->content_end - text_begin) });
@@ -59,7 +59,8 @@ static FormattedStr *addFormatted(char const *b, char const *e, Props props) {
 static FormattedStr const **formattedInnerText(
     Tag const *t,
     FormattedStr const **begin,
-    Props props = {}
+    Props props = {},
+    int lvl = 0
 ) {
     var text_begin = t->content_beg;
 
@@ -81,10 +82,10 @@ static FormattedStr const **formattedInnerText(
             prev = &cur->next;
         }
 
-        prev = formattedInnerText(d, prev, props);
+        prev = formattedInnerText(d, prev, props, lvl + 1);
 
         text_begin = d->end;
-        d++;
+        d = d->descendants_e;
     }
 
     let ptmp = tmp;
@@ -111,9 +112,6 @@ static PResult process(Result r) {
     let titleBeg = tmp;
     innerText(r.title, bodystr);
     let titleEnd = tmp;
-    let siteNameBeg = tmp;
-    innerText(r.site_name, bodystr);
-    let siteNameEnd = tmp;
 
     let siteDisplayUrlBeg = tmp;
     innerText(r.site_display_url, bodystr);
@@ -124,7 +122,6 @@ static PResult process(Result r) {
 
     return {
         .title = mkstr(titleBeg, titleEnd),
-        .site_name = mkstr(siteNameBeg, siteNameEnd),
         .site_display_url = mkstr(siteDisplayUrlBeg, siteDisplayUrlEnd),
         .url = r.rawUrl,
         .desc = desc,

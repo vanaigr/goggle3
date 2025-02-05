@@ -294,6 +294,8 @@ static int glyphs_add(int byte_count, char const *data) {
 static DisplayChar get_glyph(FontInfo *font_info, int code) {
     var &fi = *font_info;
 
+    if(code < 0 || code > 200'000) code = 0xfffd;
+
     let bucket_i = code >> chars_bucket_shift;
     let in_bucket_i = code & ((1 << chars_bucket_shift) - 1);
     var bucket = fi.chars[bucket_i];
@@ -429,6 +431,35 @@ LayoutResult lay_out(
         }
         else if(s.x >= max_width) {
             return { s, true };
+        }
+
+        let printBinary = [](unsigned int num) {
+            for (int i = 7; i >= 0; i--) {
+                printf("%d", (num >> i) & 1);
+                if(i == 4) printf("'");
+            }
+        };
+
+        if(false && c.code < 0) {
+            printBinary(text->str[s.text_i + -1]);
+            printf(" ");
+            printBinary(text->str[s.text_i + 0]);
+            printf(" ");
+            printBinary(text->str[s.text_i + 1]);
+            printf(" ");
+            printBinary(text->str[s.text_i + 2]);
+            printf(" ");
+            printBinary(text->str[s.text_i + 3]);
+            printf("\n");
+
+            /*printf(
+                "%x %x %x %x\n",
+                (unsigned char)
+                (unsigned char)text->str[s.text_i + 1],
+                (unsigned char)text->str[s.text_i + 2],
+                (unsigned char)text->str[s.text_i + 3]
+            );*/
+            fflush(stdout);
         }
 
         let ci = get_glyph(fi, c.code);

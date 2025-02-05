@@ -42,9 +42,9 @@ struct Tag {
 };
 
 struct Tags {
-    Tag *items;
+    Tag const *items;
     int count;
-    Attr *attrs; // malloc'ed
+    Attr const *attrs; // malloc'ed
 };
 
 Tags htmlToTags(char const *data, int len);
@@ -52,7 +52,6 @@ Tags htmlToTags(char const *data, int len);
 
 struct Result {
     Tag const *title;
-    Tag const *site_name;
     Tag const *site_display_url;
     str rawUrl;
     Tag const *desc;
@@ -80,7 +79,6 @@ struct FormattedStr {
 
 struct PResult {
     str title;
-    str site_name;
     str site_display_url;
     str url;
     FormattedStr const *desc;

@@ -5,6 +5,7 @@
 #include"defs.h"
 #include"alloc.h"
 
+#include"utf/decoder.h"
 #define PRINT 0
 
 char const *find(char const *b, char const *e, char c) {
@@ -33,7 +34,25 @@ static Attr *attrs_add(Attrs &attrs) {
         attrs.items = (Attr*)realloc(attrs.items, sizeof(Attr) * attrs.cap);
     }
     return attrs.items + attrs.count++;
+}
 
+static void recPrint(Tag *tag, int lvl) {
+    for(var i = 0; i < lvl; i++) printf("  ");
+
+    printf(
+        "%.*s (0x%x - 0x%x)\n",
+        tag->name.count,
+        tag->name.items,
+        (unsigned)(long long)tag->begin,
+        (unsigned)(long long)tag->end
+    );
+
+    var c = tag + 1;
+    let e = tag->descendants_e;
+    while(c < e) {
+        recPrint(c, lvl + 1);
+        c = c->descendants_e;
+    }
 }
 
 static char const *processAttrs(Attrs &attrs, char const *data, char const *end) {
@@ -107,7 +126,9 @@ Tags htmlToTags(char const *data, int len) {
     let end = data + len;
     var current = data;
 
-    current = find(current, end, '\n');
+    // skip doctype
+    current = find(current, end, '<');
+    if(current < end) current++;
 
     var attrs = Attrs{ (Attr*)malloc(sizeof(Attr) * 1024), 0, 1024 };
 
@@ -120,7 +141,11 @@ Tags htmlToTags(char const *data, int len) {
     while(current < end) {
         let begin = find(current, end, '<');
         var cur = begin;
-        if(end - cur > 0 && cur[1] != '/') {
+        if(end - cur > 1 && cur[1] == '!') {
+            cur++;
+            cur = find(cur, end, '>');
+        }
+        if(!(end - cur > 1 && cur[1] == '/')) {
             let nameBeg = cur + 1;
             var nameEnd = nameBeg;
 
@@ -150,7 +175,12 @@ Tags htmlToTags(char const *data, int len) {
             let name_c = (int)(nameEnd - nameBeg);
 
             if(name_c == 0) {
-                printf("not a tag %.*s...\n", std::min<int>(5, end - nameEnd), nameBeg);
+                printf(
+                    "not a tag `%.*s`...\n",
+                    std::min<int>(5, end - nameEnd),
+                    nameBeg
+                );
+                printf("Unexpected end of file\n");
             }
             else {
                 let script = name_c == 6 && memcmp(nameBeg,  "script", 6) == 0;
@@ -269,6 +299,42 @@ Tags htmlToTags(char const *data, int len) {
             printf(" ");
         }
         printf("(this shouldn't happen)</%.*s>\n", t.name.count, t.name.items);
+    }
+
+    // recPrint(tags, 0);
+        let printBinary = [](unsigned int num) {
+            for (int i = 7; i >= 0; i--) {
+                printf("%d", (num >> i) & 1);
+                if(i == 4) printf("'");
+            }
+        };
+
+
+    var p = data;
+    while(p < end) {
+        let c = utf_ptr2CharInfo(p);
+        if(c.code < 0) {
+            /*printBinary(p[-1]);
+            printf(" ");
+            printBinary(p[0]);
+            printf(" ");
+            printBinary(p[1]);
+            printf(" ");
+            printBinary(p[2]);
+            printf(" ");
+            printBinary(p[3]);
+            printf("\n");*/
+
+            printf(
+                "%x %x %x %x\n",
+                (unsigned char)p[0],
+                (unsigned char)p[1],
+                (unsigned char)p[2],
+                (unsigned char)p[3]
+            );
+            fflush(stdout);
+        }
+        p += c.len;
     }
 
     tmp = (char*)(tags + tags_c);

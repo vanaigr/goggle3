@@ -86,9 +86,9 @@ struct Target {
 };
 
 static Target calculateTarget(Response resp) {
-    // let file = fopen("response.txt", "w");
-    // fwrite(resp.data, resp.len, 1, file);
-    // fclose(file);
+     let file = fopen("response.html", "w");
+     fwrite(resp.data, resp.len, 1, file);
+     fclose(file);
 
     let results = processResults(extractResults(htmlToTags(resp.data, resp.len - 1)));
 
@@ -170,7 +170,10 @@ int main(int argc, char **argv) {
     let headers = curl_slist_append(nullptr, "Accept: */*");
     // It used to be fine, but now it fails without useragent.
     // And it has to be "valid"...
-    curl_slist_append(headers, "user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36");
+    //
+    // Also: see https://github.com/benbusby/whoogle-search/commit/389c0a4d8dc52c0cced397da56eb60e65d8eb109
+    // and its #1211
+    curl_slist_append(headers, "user-agent: User-Agent: Lynx/2.9.2 libwww-FM/2.14 SSL-MM/1.4.1 OpenSSL/3.4.0");
 
     curl_global_init(CURL_GLOBAL_DEFAULT);
     let multi_handle = curl_multi_init();
@@ -380,6 +383,17 @@ int main(int argc, char **argv) {
 
         while(true) {
             if(responseStatus == processing) {
+                /*
+                let file = fopen("response.html", "r");
+                fseek(file, 0, SEEK_END);
+                let size = ftell(file);
+                fseek(file, 0, SEEK_SET);
+                let data = malloc(size);
+                fread(data, size, 1, file);
+                fclose(file);
+                response = { (char*)data, (int)size };
+                responseStatus = done;
+                */
                 int left_running;
                 curl_multi_perform(multi_handle, &left_running);
                 responseStatus = left_running > 0 ? processing : done;
@@ -434,7 +448,7 @@ int main(int argc, char **argv) {
                             curl_easy_setopt(request, CURLOPT_WRITEFUNCTION, write_callback);
                             curl_easy_setopt(request, CURLOPT_VERBOSE, 1L);
 
-                            let url = STR("https://www.google.com/search?asearch=arc&async=use_ac:true,_fmt:prog&q=");
+                            let url = STR("https://www.google.com/search?gbv=1&q=");
 
                             memcpy(tmp, url.items, url.count);
 
