@@ -85,10 +85,14 @@ struct Target {
     int *rowHeights;
 };
 
+#define READ_FILE 1
+
 static Target calculateTarget(Response resp) {
-    // let file = fopen("response.txt", "w");
-    // fwrite(resp.data, resp.len, 1, file);
-    // fclose(file);
+    #if not(READ_FILE)
+    let file = fopen("response.html", "w");
+    fwrite(resp.data, resp.len, 1, file);
+    fclose(file);
+    #endif
 
     let results = processResults(extractResults(htmlToTags(resp.data, resp.len - 1)));
 
@@ -170,7 +174,25 @@ int main(int argc, char **argv) {
     let headers = curl_slist_append(nullptr, "Accept: */*");
     // It used to be fine, but now it fails without useragent.
     // And it has to be "valid"...
-    curl_slist_append(headers, "user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36");
+    curl_slist_append(headers, "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36");
+
+    let cookie = STR("Cookie: ");
+    memcpy(tmp, cookie.items, cookie.count);
+    let cookieF = fopen("cookie.txt", "r");
+    fseek(cookieF, 0, SEEK_END);
+    let cookieLen = ftell(cookieF);
+    fseek(cookieF, 0, SEEK_SET);
+    var cur = tmp + cookie.count;
+    let end = cur + cookieLen;
+    fread(cur, cookieLen, 1, cookieF);
+    while(cur < end) {
+        let c = *cur;
+        if(c == '\r' || c == '\n') break;
+        cur++;
+    }
+    *cur = '\0';
+
+    curl_slist_append(headers, tmp);
 
     curl_global_init(CURL_GLOBAL_DEFAULT);
     let multi_handle = curl_multi_init();
@@ -288,7 +310,11 @@ int main(int argc, char **argv) {
         done,
         processing,
     };
+#if READ_FILE
+    var responseStatus = processing;
+#else
     var responseStatus = done;
+#endif
     var request = (CURL *){};
 
     var targetAllocBegin = tmp;
@@ -380,9 +406,21 @@ int main(int argc, char **argv) {
 
         while(true) {
             if(responseStatus == processing) {
+            #if READ_FILE
+                let file = fopen("response.html", "r");
+                fseek(file, 0, SEEK_END);
+                let size = (int)ftell(file);
+                fseek(file, 0, SEEK_SET);
+                let buf = (char*)malloc(size + 1);
+                fread(buf, size, 1, file);
+                buf[size] = 0;
+                response = { buf, size + 1 };
+                responseStatus = done;
+            #else
                 int left_running;
                 curl_multi_perform(multi_handle, &left_running);
                 responseStatus = left_running > 0 ? processing : done;
+            #endif
 
                 if(responseStatus == done) {
                     // In case of an error (e.g. with url having spaces)
@@ -434,7 +472,7 @@ int main(int argc, char **argv) {
                             curl_easy_setopt(request, CURLOPT_WRITEFUNCTION, write_callback);
                             curl_easy_setopt(request, CURLOPT_VERBOSE, 1L);
 
-                            let url = STR("https://www.google.com/search?asearch=arc&async=use_ac:true,_fmt:prog&q=");
+                            let url = STR("https://www.google.com/search?gbv=1&q=");
 
                             memcpy(tmp, url.items, url.count);
 

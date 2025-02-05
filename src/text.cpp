@@ -294,6 +294,11 @@ static int glyphs_add(int byte_count, char const *data) {
 static DisplayChar get_glyph(FontInfo *font_info, int code) {
     var &fi = *font_info;
 
+    if(code < 0 || code > 200'000) {
+        printf("Encountered an invalid character\n");
+        code = 0xfffd;
+    }
+
     let bucket_i = code >> chars_bucket_shift;
     let in_bucket_i = code & ((1 << chars_bucket_shift) - 1);
     var bucket = fi.chars[bucket_i];

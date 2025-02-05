@@ -107,7 +107,7 @@ Tags htmlToTags(char const *data, int len) {
     let end = data + len;
     var current = data;
 
-    current = find(current, end, '\n');
+    // current = find(current, end, '\n');
 
     var attrs = Attrs{ (Attr*)malloc(sizeof(Attr) * 1024), 0, 1024 };
 
@@ -120,7 +120,11 @@ Tags htmlToTags(char const *data, int len) {
     while(current < end) {
         let begin = find(current, end, '<');
         var cur = begin;
-        if(end - cur > 0 && cur[1] != '/') {
+        if(end - cur > 1 && cur[1] == '!') {
+            cur += 2;
+            cur = find(cur, end, '>');
+        }
+        else if(!(end - cur > 1 && cur[1] == '/')) {
             let nameBeg = cur + 1;
             var nameEnd = nameBeg;
 
@@ -213,13 +217,17 @@ Tags htmlToTags(char const *data, int len) {
                 }
             }
         }
-        else if(end - cur > 0) {
+        else if(end - cur > 1) {
             cur += 2;
             let end_tag_b = cur;
             let end_tag_e = find(cur, end, '>');
             let end_tag_c = (int)(end_tag_e - end_tag_b);
             if(end_tag_e == end) {
-                printf("invalid closing tag %.*s\n", (int)(end - end_tag_b), end_tag_b);
+                printf(
+                    "invalid closing tag `%.*s`\nReached end of input\n",
+                    (int)(end - end_tag_b),
+                    end_tag_b
+                );
                 cur = end;
             }
             else {
