@@ -374,7 +374,8 @@ int main(int argc, char **argv) {
             glClear(GL_COLOR_BUFFER_BIT);
 
             var x = gap + item_w + gap;
-            var y = height - gap + yOff;
+            let initY = height - gap + yOff;
+            var y = initY;
 
             var row = 0;
             var col = 1;
@@ -409,7 +410,7 @@ int main(int argc, char **argv) {
                     .next = nullptr,
                 };
                 let res = prepare(&str, { 14, item_w, 0, -14, false });
-                draw(res.dl, 0xffffff, gap, height - gap);
+                draw(res.dl, 0xffffff, gap, initY);
                 tmp = ptmp;
             }
 
