@@ -330,9 +330,16 @@ int main(int argc, char **argv) {
     var next_redraw = chrono::steady_clock::now();
     let frame_time = static_cast<chrono::microseconds>(chrono::seconds(1)) / 40;
 
+    let repeat_time = static_cast<chrono::microseconds>(chrono::microseconds(100));
+    let offAmount = 10;
+
+    var yOff = 0;
+
+
     bool changed = true;
     while (1) {
         let frame_start = chrono::steady_clock::now();
+
         if(changed && frame_start >= next_redraw) {
             glClearColor(
                 0.12,
@@ -343,7 +350,7 @@ int main(int argc, char **argv) {
             glClear(GL_COLOR_BUFFER_BIT);
 
             var x = gap + item_w + gap;
-            var y = height - gap;
+            var y = height - gap + yOff;
 
             var row = 0;
             var col = 1;
@@ -406,6 +413,7 @@ int main(int argc, char **argv) {
 
         while(true) {
             if(responseStatus == processing) {
+                let aa = chrono::steady_clock::now();
             #if READ_FILE
                 let file = fopen("response.html", "r");
                 fseek(file, 0, SEEK_END);
@@ -421,6 +429,11 @@ int main(int argc, char **argv) {
                 curl_multi_perform(multi_handle, &left_running);
                 responseStatus = left_running > 0 ? processing : done;
             #endif
+                let bb = chrono::steady_clock::now();
+                printf(
+                    "Read file: %.2f\n",
+                    chrono::duration_cast<chrono::microseconds>(bb - aa).count() * 0.001
+                );
 
                 if(responseStatus == done) {
                     // In case of an error (e.g. with url having spaces)
@@ -433,20 +446,36 @@ int main(int argc, char **argv) {
                         targetBuffer = response;
                         response = {};
 
+                let aa = chrono::steady_clock::now();
                         target = calculateTarget(targetBuffer);
                         changed = true;
+                let bb = chrono::steady_clock::now();
+                printf(
+                    "Process: %.2f\n",
+                    chrono::duration_cast<chrono::microseconds>(bb - aa).count() * 0.001
+                );
                     }
                 }
             }
-
 
             while(XPending(display) > 0) {
                 XEvent event;
                 XNextEvent(display, &event);
                 if (event.type == Expose) {
                     changed = true;
-                } else if (event.type == KeyPress) {
-                    if(event.xkey.keycode == 9) {
+                }
+                else if (event.type == KeyPress) {
+                    if(event.xkey.keycode == 111) {
+                        // up arrow
+                        // TODO: ideally it wouldn't depend on repeat rate
+                        // and the initial wait period. But it requires XInput2 it seems.
+                        yOff -= 20;
+                    }
+                    else if(event.xkey.keycode == 116) {
+                        // down arrow
+                        yOff += 20;
+                    }
+                    else if(event.xkey.keycode == 9) {
                         // escape
                         inserting = false;
                     }
