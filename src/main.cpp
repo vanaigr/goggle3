@@ -357,6 +357,8 @@ int main(int argc, char **argv) {
 
     var yOff = 0;
 
+    var wm_delete_window = XInternAtom(display, "WM_DELETE_WINDOW", False);
+    XSetWMProtocols(display, window, &wm_delete_window, 1);
 
     bool changed = true;
     while (1) {
@@ -483,7 +485,10 @@ int main(int argc, char **argv) {
             while(XPending(display) > 0) {
                 XEvent event;
                 XNextEvent(display, &event);
-                if (event.type == Expose) {
+                if (event.xclient.data.l[0] == wm_delete_window) {
+                    goto exit;
+                }
+                else if (event.type == Expose) {
                     changed = true;
                 }
                 else if (event.type == KeyPress) {
@@ -601,7 +606,9 @@ int main(int argc, char **argv) {
                             for(var i = 0; i < target.count; i++) {
                                 if(streq(typed, open_hotkeys[i])) {
                                     if(open_url(target.results[i].url)) {
-                                        exit(0);
+                                        hidden = true;
+                                        // race condition...
+                                        XUnmapWindow(display, window);
                                     }
                                     break;
                                 }
