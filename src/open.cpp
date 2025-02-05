@@ -95,6 +95,8 @@ bool open_url(str url) {
     tmp[url.count] = '\0';
     printf("%s\n", tmp);
 
+    // TODO: this can start a new firefox. We should not wait for it
+
     // there's --new-tab flag, but it just breaks the CLI
     // and it opens an empty window. Whatever. Thank's for wasting my time
     char const *const tab_args[]{ "firefox", tmp, nullptr };
