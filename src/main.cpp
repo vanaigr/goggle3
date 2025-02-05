@@ -14,6 +14,7 @@
 #include<stdbool.h>
 #include<algorithm>
 #include<chrono>
+#include<signal.h>
 
 #include<spawn.h>
 
@@ -84,6 +85,9 @@ struct Target {
     CalculatedText *texts;
     int *rowHeights;
 };
+
+static Display *display;
+static Window window;
 
 #define READ_FILE 0
 
@@ -168,7 +172,7 @@ static Target calculateTarget(Response resp) {
 }
 
 int main(int argc, char **argv) {
-    Display *display = XOpenDisplay(NULL);
+    display = XOpenDisplay(NULL);
     if (display == NULL) return 1;
 
     let headers = curl_slist_append(nullptr, "Accept: */*");
@@ -202,18 +206,15 @@ int main(int argc, char **argv) {
     int screen_width = XDisplayWidth(display, screen);
     int screen_height = XDisplayHeight(display, screen);
 
-    // for i3, y=1 is 21 pixels away from top. Possibly because of tabs?
-    // But why can I obscure the bottom bar with workspaces then?
-    int what = 20, bot = 20;
-    int pad = std::min(screen_width, screen_height) / 30;
-    int pad_top = std::max(0, pad - what);
+    int bot = 20;
+    static int pad = std::min(screen_width, screen_height) / 30;
     width = screen_width - 2*pad;
-    height = screen_height - bot - (what + pad_top) - pad;
+    height = screen_height - 2*pad - bot;
 
     let rootWindow = RootWindow(display, screen);
-    Window window = XCreateSimpleWindow(
+    window = XCreateSimpleWindow(
         display, rootWindow,
-        pad, pad_top, width, height,
+        pad, pad, width, height,
         0, BlackPixel(display, screen), WhitePixel(display, screen)
     );
 
@@ -297,7 +298,30 @@ int main(int argc, char **argv) {
 
     XSelectInput(display, rootWindow, KeyPressMask);
 
+    var inserting = true;
+
+    static var hidden = false;
+
+    let handler = [](int signal) {
+        if(!hidden) return;
+        // This all is not technicallly allowed?
+
+        // NO TMP! This is called inside of signal handler
+        // This can allocate memory. Hope we interrupted an allocation
+        // in the main program...
+        // This opens the window in the current workspace for some reason.
+        // So we don't have to do anything.
+        XMapWindow(display, window);
+        XMoveWindow(display, window, pad, pad);
+    };
+
+    signal(SIGUSR1, handler);
+
     XMapWindow(display, window);
+    // i3 positions the window with weird top padding.
+    // And uses the right the coordinates only if the window is
+    // repositioned after the window is shown.
+    XMoveWindow(display, window, pad, pad);
 
     let text = tmp;
     let text_end = tmp + 4096;
@@ -320,8 +344,6 @@ int main(int argc, char **argv) {
     var targetAllocBegin = tmp;
     var targetBuffer = Response{};
     var target = Target{};
-
-    var inserting = false;
 
     let regularColor = 0xfff582;
     let insertColor = 0x808080;
@@ -556,7 +578,9 @@ int main(int argc, char **argv) {
                     else {
                         if(event.xkey.keycode == 24) {
                             // q
-                            goto exit;
+                            hidden = true;
+                            // race condition...
+                            XUnmapWindow(display, window);
                         }
                         if(event.xkey.keycode == 31) {
                             // i
