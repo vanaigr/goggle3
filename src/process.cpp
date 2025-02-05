@@ -24,7 +24,7 @@ static void innerText(Tag const *t, P const &processor) {
         processor(str{ text_begin, (int)(d->begin - text_begin) });
         innerText(d, processor);
         text_begin = d->end;
-        d++;
+        d = d->descendants_e;
     }
 
     processor(str{ text_begin, (int)(t->content_end - text_begin) });
@@ -84,7 +84,7 @@ static FormattedStr const **formattedInnerText(
         prev = formattedInnerText(d, prev, props);
 
         text_begin = d->end;
-        d++;
+        d = d->descendants_e;
     }
 
     let ptmp = tmp;
