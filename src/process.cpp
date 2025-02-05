@@ -112,6 +112,22 @@ static PResult process(Result r) {
     innerText(r.title, bodystr);
     let titleEnd = tmp;
 
+    str url;
+    {
+        var b = r.rawUrl.items;
+        var e = b + r.rawUrl.count;
+        let ignore = STR("/url?q=");
+        if(streq(
+            { b, std::min(r.rawUrl.count, ignore.count) },
+            ignore
+        )) {
+            b += ignore.count;
+        }
+        e = find(b, e, '&');
+
+        url = mkstr(b, e);
+    }
+
     let siteDisplayUrlBeg = tmp;
     innerText(r.site_display_url, bodystr);
     let siteDisplayUrlEnd = tmp;
@@ -122,7 +138,7 @@ static PResult process(Result r) {
     return {
         .title = mkstr(titleBeg, titleEnd),
         .site_display_url = mkstr(siteDisplayUrlBeg, siteDisplayUrlEnd),
-        .url = r.rawUrl,
+        .url = url,
         .desc = desc,
     };
 }

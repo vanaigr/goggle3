@@ -431,7 +431,7 @@ int main(int argc, char **argv) {
             #endif
                 let bb = chrono::steady_clock::now();
                 printf(
-                    "Read file: %.2f\n",
+                    "Get result: %.2f\n",
                     chrono::duration_cast<chrono::microseconds>(bb - aa).count() * 0.001
                 );
 
