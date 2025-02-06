@@ -326,6 +326,7 @@ int main(int argc, char **argv) {
     let text = tmp;
     let text_end = tmp + 4096;
     var text_c = 0;
+    var cursor_c = 0;
     tmp += 4096;
 
     var response = Response{};
@@ -375,7 +376,10 @@ int main(int argc, char **argv) {
             let ptmp = tmp;
 
             TextLayout res;
+            int cursor_off_x;
+            int cursor_off_y;
             {
+                let params = LayoutParams{ 14, item_w, 0, -14, 20, false };
                 let str = FormattedStr{
                     .bold = false,
                     .italic = false,
@@ -383,7 +387,18 @@ int main(int argc, char **argv) {
                     .str = text,
                     .next = nullptr,
                 };
-                res = prepare(&str, { 14, item_w, 0, -14, 20, false });
+                res = prepare(&str, params);
+
+                let c_str = FormattedStr{
+                    .bold = false,
+                    .italic = false,
+                    .len = cursor_c,
+                    .str = text,
+                    .next = nullptr,
+                };
+                let c_res = prepare(&c_str, params);
+                cursor_off_x = c_res.stop_x;
+                cursor_off_y = c_res.stop_y;
             }
             let prompt_height = -res.stop_y + 5;
 
@@ -406,6 +421,14 @@ int main(int argc, char **argv) {
                     { 0.12, 0.12, 0.12, 1 }
                 );
             }
+
+            rect(
+                gap + cursor_off_x,
+                initY + cursor_off_y - 4,
+                2,
+                18,
+                0xffffffff
+            );
 
             if(responseStatus == processing) {
                 rect(0, height - 3, width, 3, 0xff27ff48);
@@ -533,23 +556,69 @@ int main(int argc, char **argv) {
                         inserting = false;
                     }
                     else if(inserting) {
+                        let &ev = *(XKeyEvent*)&event;
+                        if(event.xkey.keycode == 113) {
+                            // left arrow
+                            if(cursor_c > 0) {
+                                if(ev.state & (ControlMask | Mod1Mask)) {
+                                    var cur = text + cursor_c - 1;
+                                    while(cur >= text && *cur == ' ') cur--;
+                                    while(cur >= text && *cur != ' ') cur--;
+                                    cursor_c = cur + 1 - text;
+                                }
+                                else {
+                                    cursor_c--;
+                                }
+                            }
+                        }
+                        else if(event.xkey.keycode == 114) {
+                            // right arrow
+                            if(cursor_c < text_c) {
+                                if(ev.state & (ControlMask | Mod1Mask)) {
+                                    var cur = text + cursor_c;
+                                    let end = text + text_c;
+                                    while(cur < end && *cur == ' ') cur++;
+                                    while(cur < end && *cur != ' ') cur++;
+                                    cursor_c = cur - text;
+                                }
+                                else {
+                                    cursor_c++;
+                                }
+                            }
+                        }
                         if(event.xkey.keycode == 22) {
                             // backspace
-                            let &ev = *(XKeyEvent*)&event;
                             if(ev.state & Mod1Mask) {
                                 text_c = 0;
+                                cursor_c = 0;
                             }
                             else if(ev.state & ControlMask) {
                                 // not the best algorithm. but works on unicode.
-                                if(text_c > 0) {
-                                    var cur = text + text_c - 1;
+                                if(cursor_c > 0) {
+                                    var cur = text + cursor_c - 1;
                                     while(cur >= text && *cur == ' ') cur--;
                                     while(cur >= text && *cur != ' ') cur--;
-                                    text_c = (cur + 1 - text);
+                                    let new_cursor_c = (cur + 1 - text);
+                                    memmove(
+                                        text + new_cursor_c,
+                                        text + cursor_c,
+                                        text_c - cursor_c
+                                    );
+                                    let diff = cursor_c - new_cursor_c;
+                                    cursor_c = new_cursor_c;
+                                    text_c -= diff;
                                 }
                             }
                             else {
-                                text_c = text_c >= 1 ? text_c - 1 : 0;
+                                if(cursor_c > 0) {
+                                    memmove(
+                                        text + cursor_c - 1,
+                                        text + cursor_c,
+                                        text_c - cursor_c
+                                    );
+                                    cursor_c--;
+                                    text_c--;
+                                }
                             }
                         }
                         else if(event.xkey.keycode == 36) {
@@ -613,11 +682,18 @@ int main(int argc, char **argv) {
                             int len = Xutf8LookupString(
                                 xic,
                                 &event.xkey,
-                                text + text_c,
+                                tmp,
                                 text_end - text,
                                 &keysym,
                                 &compose
                             );
+                            memmove(
+                                text + cursor_c + len,
+                                text + cursor_c,
+                                text_c - cursor_c
+                            );
+                            memcpy(text + cursor_c, tmp, len);
+                            cursor_c += len;
                             text_c += len;
                         }
                     }
