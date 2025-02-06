@@ -39,11 +39,11 @@ void tryAddResult(Results &res, Tag const *begin, Attr const *attrs) {
     let inside_a_end = cur->descendants_e;
 
     if(cur + 1 == inside_a_end) err;
-    let websiteNameTag = cur + 1;
-    cur = websiteNameTag->descendants_e;
+    let titleTag = cur + 1;
+    cur = titleTag->descendants_e;
 
     if(cur == inside_a_end) err;
-    let titleTag = cur;
+    let websiteNameTag = cur;
 
     let desc = first_cont->descendants_e;
     if(desc == container->descendants_e) err;
