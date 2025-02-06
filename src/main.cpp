@@ -301,8 +301,9 @@ int main(int argc, char **argv) {
 
     XSelectInput(display, rootWindow, KeyPressMask);
 
-    var inserting = false;
+    var inserting = true;
 
+    static var wasHidden = false;
     static var hidden = false;
 
     let handler = [](int signal) {
@@ -316,6 +317,7 @@ int main(int argc, char **argv) {
         // So we don't have to do anything.
         XMapWindow(display, window);
         XMoveWindow(display, window, pad, pad);
+        hidden = false;
     };
 
     signal(SIGUSR1, handler);
@@ -366,6 +368,11 @@ int main(int argc, char **argv) {
 
     bool changed = true;
     while (1) {
+        if(wasHidden && !hidden) {
+            inserting = true;
+        }
+        wasHidden = hidden;
+
         let frame_start = chrono::steady_clock::now();
 
         if(changed && frame_start >= next_redraw) {
@@ -661,7 +668,13 @@ int main(int argc, char **argv) {
                         responseStatus = processing;
                     }
                     else if(inserting) {
-                        if(event.xkey.keycode == 113) {
+                        if(event.xkey.keycode == 24 && (ev.state & Mod1Mask)) {
+                            // q
+                            hidden = true;
+                            // race condition...
+                            XUnmapWindow(display, window);
+                        }
+                        else if(event.xkey.keycode == 113) {
                             // left arrow
                             if(cursor_c > 0) {
                                 if(ev.state & (ControlMask | Mod1Mask)) {
@@ -690,7 +703,7 @@ int main(int argc, char **argv) {
                                 }
                             }
                         }
-                        if(event.xkey.keycode == 22) {
+                        else if(event.xkey.keycode == 22) {
                             // backspace
                             if(ev.state & Mod1Mask) {
                                 text_c = 0;
