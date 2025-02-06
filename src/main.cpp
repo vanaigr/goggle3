@@ -611,13 +611,18 @@ int main(int argc, char **argv) {
                             }
                             else {
                                 if(cursor_c > 0) {
+                                    var cur = text + cursor_c - 1;
+                                    while(cur > text && (*cur & 0xc0) == 0x80) cur--;
+
+                                    let new_cursor_c = cur - text;
+                                    let diff = cursor_c - new_cursor_c;
                                     memmove(
-                                        text + cursor_c - 1,
+                                        cur,
                                         text + cursor_c,
                                         text_c - cursor_c
                                     );
-                                    cursor_c--;
-                                    text_c--;
+                                    cursor_c = new_cursor_c;
+                                    text_c -= diff;
                                 }
                             }
                         }
