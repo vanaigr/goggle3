@@ -128,6 +128,6 @@ int text_init();
 void text_bind_texture(int texture);
 TextLayout prepare(FormattedStr const *text, LayoutParams params);
 void draw(DrawList dl, int color, int x, int y);
-void rect(int x, int y, int w, int h);
+void rect(int x, int y, int w, int h, unsigned color);
 
 bool open_url(str url);

@@ -21,6 +21,7 @@ static GLuint color_u;
 
 static GLuint prog2;
 static GLuint bbuf;
+static GLuint color2_u;
 
 static struct {
     GLuint buf;
@@ -192,6 +193,8 @@ int text_init() {
                 int data[];
             };
 
+            uniform vec4 color;
+
             void main() {
                 int groupId = int(gl_WorkGroupID.x);
 
@@ -210,9 +213,8 @@ int text_init() {
                     int y = off / rectangle.b;
                     ivec2 coord = rectangle.xy + ivec2(x, y);
 
-                    vec3 color = vec3(1, 0, 0);
                     vec4 prev_color = imageLoad(outImg, coord);
-                    vec4 col = vec4(mix(prev_color.rgb, color, 0.1), 1);
+                    vec4 col = vec4(mix(prev_color.rgb, color.rgb, color.a), 1);
                     imageStore(outImg, coord, col);
                 }
             }
@@ -226,6 +228,8 @@ int text_init() {
         glAttachShader(prog2, compute);
         glLinkProgram(prog2);
         programReport(prog2);
+        ce;
+        color2_u = glGetUniformLocation(prog2, "color");
         ce;
     }
 
@@ -608,13 +612,20 @@ void draw(DrawList dl, int color, int x, int y) {
     ce;
 }
 
-void rect(int x, int y, int w, int h) {
+void rect(int x, int y, int w, int h, unsigned color) {
     int data[]{ x, y, w, h };
     glNamedBufferData(bbuf, 16, data, GL_DYNAMIC_DRAW);
     ce;
 
     ce;
     glUseProgram(prog2);
+    glUniform4f(
+        color2_u,
+        ((color >> 16) & 0xffU) / 255.0,
+        ((color >>  8) & 0xffU) / 255.0,
+        ((color      ) & 0xffU) / 255.0,
+        ((color >> 24) & 0xffU) / 255.0
+    );
     glDispatchCompute(1, 1, 1);
     glMemoryBarrier(GL_ALL_BARRIER_BITS);
     ce;

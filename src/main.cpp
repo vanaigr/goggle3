@@ -30,8 +30,7 @@ struct Response {
     char *data;
     int len;
 };
-
-size_t write_callback(void *contents, size_t size, size_t nmemb, Response *userp) {
+static size_t write_callback(void *contents, size_t size, size_t nmemb, Response *userp) {
     let chunk_len = (int)(size * nmemb);
     var resp = *userp;
 
@@ -377,6 +376,16 @@ int main(int argc, char **argv) {
             let initY = height - gap + yOff;
             var y = initY;
 
+            if(responseStatus == processing) {
+                rect(
+                    0,
+                    height - 3,
+                    width,
+                    3,
+                    0xff27ff48
+                );
+            }
+
             var row = 0;
             var col = 1;
             for(var i = 0; i < target.count; i++) {
@@ -393,7 +402,7 @@ int main(int argc, char **argv) {
 
                 col++;
                 if(col == cols) {
-                    y -= target.rowHeights[row] + gap;
+                    y -= target.rowHeights[row] + gap * 2;
                     row++;
                     col = 0;
                     x = gap;
@@ -447,7 +456,7 @@ int main(int argc, char **argv) {
                 let buf = (char*)malloc(size + 1);
                 fread(buf, size, 1, file);
                 buf[size] = 0;
-                response = { buf, size + 1 };
+                response = { size, buf, size + 1, false };
                 responseStatus = done;
             #else
                 int left_running;
