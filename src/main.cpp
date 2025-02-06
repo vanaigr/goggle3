@@ -1,4 +1,3 @@
-
 #include<X11/Xlib.h>
 #include<X11/Xutil.h>
 #include<X11/Xatom.h>
@@ -31,6 +30,77 @@ struct Response {
     char *data;
     int len;
 };
+
+static let set_cookie = STR("set-cookie");
+
+static void header_check(char const *buffer, int count) {
+    var c_cur = set_cookie.items;
+    let c_end = c_cur + set_cookie.count;
+
+    var cur = buffer;
+    let end = cur + count;
+    if(count < set_cookie.count + 1) return;
+
+    while(c_cur < c_end) {
+        var c = *cur;
+        let cc = *c_cur;
+        if(c >= 'A' && c <= 'Z') c = (c - 'A') + 'a';
+        if(c != cc) return;
+        cur++;
+        c_cur++;
+    }
+
+    if(*cur != ':') return;
+    cur++;
+    while(cur < end && *cur == ' ') cur++;
+
+    let newCookie = parseOneCookie(cur, end);
+    if(newCookie.name.count == 0) return;
+    /* printf(
+        "new cookie: %.*s %.*s",
+        newCookie.name.count,
+        newCookie.name.items,
+        newCookie.value.count,
+        newCookie.value.items
+    ); */
+
+    let c = fopen("./cookie.txt", "a+");
+    fseek(c, 0, SEEK_END);
+    let c_count = (int)ftell(c);
+    fseek(c, 0, SEEK_SET);
+
+    let buf = alloc(c_count);
+    fread(buf, c_count, 1, c);
+
+    var res = getCookies(buf, c_count);
+    var i = 0;
+    for(; i < res.count; i++) {
+        let a = res.items[i];
+        if(streq(a.name, newCookie.name)) {
+            break;
+        }
+    }
+    res.items[i] = newCookie;
+    if(i == res.count) {
+        res.count++;
+        tmp = (char*)(res.items + res.count);
+    }
+
+    let updated = encodeCookies(res);
+
+    fseek(c, 0, SEEK_SET);
+    fwrite(updated.items, updated.count, 1, c);
+    ftruncate(fileno(c), updated.count);
+    fclose(c);
+}
+
+static size_t header_callback(char *buffer, size_t size, size_t nitems, void *userdata) {
+    let ptmp = tmp;
+    header_check(buffer, (int)nitems);
+    tmp = ptmp;
+    return nitems;
+}
+
 static size_t write_callback(void *contents, size_t size, size_t nmemb, Response *userp) {
     let chunk_len = (int)(size * nmemb);
     var resp = *userp;
@@ -174,29 +244,6 @@ static Target calculateTarget(Response resp) {
 int main(int argc, char **argv) {
     display = XOpenDisplay(NULL);
     if (display == NULL) return 1;
-
-    let headers = curl_slist_append(nullptr, "Accept: */*");
-    // It used to be fine, but now it fails without useragent.
-    // And it has to be "valid"...
-    curl_slist_append(headers, "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36");
-
-    let cookie = STR("Cookie: ");
-    memcpy(tmp, cookie.items, cookie.count);
-    let cookieF = fopen("cookie.txt", "r");
-    fseek(cookieF, 0, SEEK_END);
-    let cookieLen = ftell(cookieF);
-    fseek(cookieF, 0, SEEK_SET);
-    var cur = tmp + cookie.count;
-    let end = cur + cookieLen;
-    fread(cur, cookieLen, 1, cookieF);
-    while(cur < end) {
-        let c = *cur;
-        if(c == '\r' || c == '\n') break;
-        cur++;
-    }
-    *cur = '\0';
-
-    curl_slist_append(headers, tmp);
 
     curl_global_init(CURL_GLOBAL_DEFAULT);
     let multi_handle = curl_multi_init();
@@ -345,6 +392,7 @@ int main(int argc, char **argv) {
 #else
     var responseStatus = done;
 #endif
+    var req_headers = (curl_slist*){};
     var request = (CURL *){};
 
     var targetAllocBegin = tmp;
@@ -504,6 +552,7 @@ int main(int argc, char **argv) {
                 fseek(file, 0, SEEK_SET);
                 let buf = (char*)malloc(size + 1);
                 fread(buf, size, 1, file);
+                fclose(file);
                 buf[size] = 0;
                 response = { size, buf, size + 1, false };
                 responseStatus = done;
@@ -623,13 +672,39 @@ int main(int argc, char **argv) {
                         if(request) {
                             curl_multi_remove_handle(multi_handle, request);
                             curl_easy_cleanup(request);
+                            curl_slist_free_all(req_headers);
                         }
                         free(response.data);
                         response = {};
 
                         request = curl_easy_init();
 
+                        let headers = curl_slist_append(nullptr, "Accept: */*");
+                        // It used to be fine, but now it fails without useragent.
+                        // And it has to be "valid"...
+                        curl_slist_append(headers, "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36");
+
+                        let cookie = STR("Cookie: ");
+                        memcpy(tmp, cookie.items, cookie.count);
+                        let cookieF = fopen("cookie.txt", "r");
+                        fseek(cookieF, 0, SEEK_END);
+                        let cookieLen = ftell(cookieF);
+                        fseek(cookieF, 0, SEEK_SET);
+                        var cur = tmp + cookie.count;
+                        let end = cur + cookieLen;
+                        fread(cur, cookieLen, 1, cookieF);
+                        fclose(cookieF);
+                        while(cur < end) {
+                            let c = *cur;
+                            if(c == '\r' || c == '\n') break;
+                            cur++;
+                        }
+                        *cur = '\0';
+
+                        curl_slist_append(headers, tmp);
+
                         curl_easy_setopt(request, CURLOPT_HTTPHEADER, headers);
+                        curl_easy_setopt(request, CURLOPT_HEADERFUNCTION, header_callback);
                         curl_easy_setopt(request, CURLOPT_WRITEFUNCTION, write_callback);
                         curl_easy_setopt(request, CURLOPT_VERBOSE, 1L);
 

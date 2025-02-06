@@ -41,6 +41,8 @@ struct Tag {
     int attrs_end;
 };
 
+#define P(a) (a).count, (a).items
+
 struct Tags {
     Tag *items;
     int count;
@@ -133,3 +135,17 @@ struct vec4{ float r, g, b, a; };
 void rect(int x, int y, int w, int h, vec4 color);
 
 bool open_url(str url);
+
+struct Cookie {
+    str name;
+    str value;
+};
+
+struct Cookies {
+    Cookie *items;
+    int count;
+};
+
+Cookie parseOneCookie(char const *&cur, char const *end);
+Cookies getCookies(char const *buf, int count);
+str encodeCookies(Cookies cookies);
