@@ -535,7 +535,22 @@ int main(int argc, char **argv) {
                     else if(inserting) {
                         if(event.xkey.keycode == 22) {
                             // backspace
-                            text_c = text_c >= 1 ? text_c - 1 : 0;
+                            let &ev = *(XKeyEvent*)&event;
+                            if(ev.state & Mod1Mask) {
+                                text_c = 0;
+                            }
+                            else if(ev.state & ControlMask) {
+                                // not the best algorithm. but works on unicode.
+                                if(text_c > 0) {
+                                    var cur = text + text_c - 1;
+                                    while(cur >= text && *cur == ' ') cur--;
+                                    while(cur >= text && *cur != ' ') cur--;
+                                    text_c = (cur + 1 - text);
+                                }
+                            }
+                            else {
+                                text_c = text_c >= 1 ? text_c - 1 : 0;
+                            }
                         }
                         else if(event.xkey.keycode == 36) {
                             // enter
