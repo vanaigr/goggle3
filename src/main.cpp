@@ -609,6 +609,57 @@ int main(int argc, char **argv) {
                         // escape
                         inserting = false;
                     }
+                    else if(event.xkey.keycode == 36) {
+                        // enter
+                        inserting = false;
+
+                        if(request) {
+                            curl_multi_remove_handle(multi_handle, request);
+                            curl_easy_cleanup(request);
+                        }
+                        free(response.data);
+                        response = {};
+
+                        request = curl_easy_init();
+
+                        curl_easy_setopt(request, CURLOPT_HTTPHEADER, headers);
+                        curl_easy_setopt(request, CURLOPT_WRITEFUNCTION, write_callback);
+                        curl_easy_setopt(request, CURLOPT_VERBOSE, 1L);
+
+                        let url = STR("https://www.google.com/search?gbv=1&q=");
+
+                        memcpy(tmp, url.items, url.count);
+
+                        let hex = "01234567890ABCDEF";
+
+                        var out = tmp + url.count;
+                        for(var i = 0; i < text_c; i++) {
+                            let c = text[i];
+                            if(c == ' ') {
+                                *out++ = '+';
+                            }
+                            else if(
+                                (c >= 'a' && c <= 'z')
+                                || (c >= 'A' && c <= 'Z')
+                                || (c >= '0' && c <= '9')
+                            ) {
+                                *out++ = c;
+                            }
+                            else {
+                                *out++ = '%';
+                                *out++ = hex[((unsigned char)c >> 4) & 0xf];
+                                *out++ = hex[(unsigned char)c & 0xf];
+                            }
+                        }
+                        *out = '\0';
+
+                        curl_easy_setopt(request, CURLOPT_URL, tmp);
+                        curl_easy_setopt(request, CURLOPT_WRITEDATA, (void *)&response);
+
+                        curl_multi_add_handle(multi_handle, request);
+
+                        responseStatus = processing;
+                    }
                     else if(inserting) {
                         if(event.xkey.keycode == 113) {
                             // left arrow
@@ -678,59 +729,6 @@ int main(int argc, char **argv) {
                                     text_c -= diff;
                                 }
                             }
-                        }
-                        else if(event.xkey.keycode == 36) {
-                            // enter
-                            inserting = false;
-
-                            if(request) {
-                                curl_multi_remove_handle(multi_handle, request);
-                                curl_easy_cleanup(request);
-                            }
-                            free(response.data);
-                            response = {};
-
-                            request = curl_easy_init();
-
-                            curl_easy_setopt(request, CURLOPT_HTTPHEADER, headers);
-                            curl_easy_setopt(request, CURLOPT_WRITEFUNCTION, write_callback);
-                            curl_easy_setopt(request, CURLOPT_VERBOSE, 1L);
-
-                            let url = STR("https://www.google.com/search?gbv=1&q=");
-
-                            memcpy(tmp, url.items, url.count);
-
-                            let hex = "01234567890ABCDEF";
-
-                            var out = tmp + url.count;
-                            for(var i = 0; i < text_c; i++) {
-                                let c = text[i];
-                                if(c == ' ') {
-                                    *out++ = '+';
-                                }
-                                else if(
-                                    (c >= 'a' && c <= 'z')
-                                    || (c >= 'A' && c <= 'Z')
-                                    || (c >= '0' && c <= '9')
-                                ) {
-                                    *out++ = c;
-                                }
-                                else {
-                                    *out++ = '%';
-                                    *out++ = hex[((unsigned char)c >> 4) & 0xf];
-                                    *out++ = hex[(unsigned char)c & 0xf];
-                                }
-                            }
-                            *out = '\0';
-                            printf("%s\n", tmp);
-                            return 0;
-
-                            curl_easy_setopt(request, CURLOPT_URL, tmp);
-                            curl_easy_setopt(request, CURLOPT_WRITEDATA, (void *)&response);
-
-                            curl_multi_add_handle(multi_handle, request);
-
-                            responseStatus = processing;
                         }
                         else {
                             KeySym keysym;
