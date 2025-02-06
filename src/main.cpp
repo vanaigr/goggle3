@@ -218,6 +218,9 @@ int main(int argc, char **argv) {
         0, BlackPixel(display, screen), WhitePixel(display, screen)
     );
 
+    Atom clipboard = XInternAtom(display, "CLIPBOARD", False);
+    Atom utf8_string = XInternAtom(display, "UTF8_STRING", False);
+
     Atom wm_window_type = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
     Atom wm_window_type_splash = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DIALOG", False);
     XChangeProperty(
@@ -324,10 +327,10 @@ int main(int argc, char **argv) {
     XMoveWindow(display, window, pad, pad);
 
     let text = tmp;
-    let text_end = tmp + 4096;
+    let text_end = tmp + 100'000;
     var text_c = 0;
     var cursor_c = 0;
-    tmp += 4096;
+    tmp += 100'000;
 
     var response = Response{};
 
@@ -540,8 +543,59 @@ int main(int argc, char **argv) {
                 else if (event.type == Expose) {
                     changed = true;
                 }
+                else if (event.xselection.selection == clipboard) {
+                    if (event.xselection.property != None) {
+                        Atom type;
+                        int format;
+                        unsigned long len;
+                        unsigned long leftover;
+                        unsigned char *data = NULL;
+
+                        XGetWindowProperty(
+                            display,
+                            window,
+                            event.xselection.property,
+                            0,
+                            (~0L),
+                            False,
+                            AnyPropertyType,
+                            &type,
+                            &format,
+                            &len,
+                            &leftover,
+                            &data
+                        );
+
+                        if (data) {
+                            memmove(
+                                text + cursor_c + len,
+                                text + cursor_c,
+                                text_c - cursor_c
+                            );
+                            memcpy(text + cursor_c, data, len);
+                            cursor_c += len;
+                            text_c += len;
+                            XFree(data);
+                            changed = true;
+                        }
+                    }
+                    break;
+                }
                 else if (event.type == KeyPress) {
-                    if(event.xkey.keycode == 111) {
+                    let &ev = *(XKeyEvent*)&event;
+                    //printf("%d\n", event.xkey.keycode);
+                    if(event.xkey.keycode == 55 && (ev.state & ControlMask)) {
+                        XConvertSelection(
+                            display,
+                            clipboard,
+                            utf8_string,
+                            clipboard,
+                            window,
+                            CurrentTime
+                        );
+                        XFlush(display);
+                    }
+                    else if(event.xkey.keycode == 111) {
                         // up arrow
                         // TODO: ideally it wouldn't depend on repeat rate
                         // and the initial wait period. But it requires XInput2 it seems.
@@ -556,7 +610,6 @@ int main(int argc, char **argv) {
                         inserting = false;
                     }
                     else if(inserting) {
-                        let &ev = *(XKeyEvent*)&event;
                         if(event.xkey.keycode == 113) {
                             // left arrow
                             if(cursor_c > 0) {
@@ -647,31 +700,30 @@ int main(int argc, char **argv) {
 
                             memcpy(tmp, url.items, url.count);
 
-                            let escaped = STR(":/?#[]@!$&'()*+,;=");
                             let hex = "01234567890ABCDEF";
-                            let eend = escaped.items + escaped.count;
 
                             var out = tmp + url.count;
                             for(var i = 0; i < text_c; i++) {
                                 let c = text[i];
-                                let it = find(
-                                    escaped.items,
-                                    eend,
-                                    c
-                                );
-                                if(it != eend) {
-                                    *out++ = '%';
-                                    *out++ = hex[c & 0xf];
-                                    *out++ = hex[(c >> 4) & 0xf];
-                                }
-                                else if(c == ' ') {
+                                if(c == ' ') {
                                     *out++ = '+';
                                 }
-                                else {
+                                else if(
+                                    (c >= 'a' && c <= 'z')
+                                    || (c >= 'A' && c <= 'Z')
+                                    || (c >= '0' && c <= '9')
+                                ) {
                                     *out++ = c;
+                                }
+                                else {
+                                    *out++ = '%';
+                                    *out++ = hex[((unsigned char)c >> 4) & 0xf];
+                                    *out++ = hex[(unsigned char)c & 0xf];
                                 }
                             }
                             *out = '\0';
+                            printf("%s\n", tmp);
+                            return 0;
 
                             curl_easy_setopt(request, CURLOPT_URL, tmp);
                             curl_easy_setopt(request, CURLOPT_WRITEDATA, (void *)&response);
