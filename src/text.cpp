@@ -613,19 +613,22 @@ void draw(DrawList dl, int color, int x, int y) {
 }
 
 void rect(int x, int y, int w, int h, unsigned color) {
+    rect(x, y, w, h, {
+        ((color >> 16) & 0xffU) / 255.0f,
+        ((color >>  8) & 0xffU) / 255.0f,
+        ((color      ) & 0xffU) / 255.0f,
+        ((color >> 24) & 0xffU) / 255.0f
+    });
+}
+
+void rect(int x, int y, int w, int h, vec4 color) {
     int data[]{ x, y, w, h };
     glNamedBufferData(bbuf, 16, data, GL_DYNAMIC_DRAW);
     ce;
 
     ce;
     glUseProgram(prog2);
-    glUniform4f(
-        color2_u,
-        ((color >> 16) & 0xffU) / 255.0,
-        ((color >>  8) & 0xffU) / 255.0,
-        ((color      ) & 0xffU) / 255.0,
-        ((color >> 24) & 0xffU) / 255.0
-    );
+    glUniform4f(color2_u, color.r, color.g, color.b, color.a);
     glDispatchCompute(1, 1, 1);
     glMemoryBarrier(GL_ALL_BARRIER_BITS);
     ce;

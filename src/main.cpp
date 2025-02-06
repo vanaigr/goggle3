@@ -1,3 +1,4 @@
+
 #include<X11/Xlib.h>
 #include<X11/Xutil.h>
 #include<X11/Xatom.h>
@@ -364,26 +365,50 @@ int main(int argc, char **argv) {
         let frame_start = chrono::steady_clock::now();
 
         if(changed && frame_start >= next_redraw) {
-            glClearColor(
-                0.12,
-                0.12,
-                0.12,
-                1
-            );
+            glClearColor(0.12, 0.12, 0.12, 1);
             glClear(GL_COLOR_BUFFER_BIT);
 
             var x = gap + item_w + gap;
             let initY = height - gap + yOff;
             var y = initY;
 
-            if(responseStatus == processing) {
+            let ptmp = tmp;
+
+            TextLayout res;
+            {
+                let str = FormattedStr{
+                    .bold = false,
+                    .italic = false,
+                    .len = text_c,
+                    .str = text,
+                    .next = nullptr,
+                };
+                res = prepare(&str, { 14, item_w, 0, -14, 20, false });
+            }
+            let prompt_height = -res.stop_y + 5;
+
+            if(inserting) {
+                let bot = initY - prompt_height;
+                let pad = 4;
+                let thk = 2;
                 rect(
-                    0,
-                    height - 3,
-                    width,
-                    3,
-                    0xff27ff48
+                    gap - (pad + thk),
+                    bot - (pad + thk),
+                    item_w + (pad + thk) * 2,
+                    prompt_height + (pad + thk) * 2,
+                    0xfff2f220
                 );
+                rect(
+                    gap - pad,
+                    bot - pad,
+                    item_w + pad * 2,
+                    prompt_height + pad * 2,
+                    { 0.12, 0.12, 0.12, 1 }
+                );
+            }
+
+            if(responseStatus == processing) {
+                rect(0, height - 3, width, 3, 0xff27ff48);
             }
 
             var row = 0;
@@ -402,26 +427,17 @@ int main(int argc, char **argv) {
 
                 col++;
                 if(col == cols) {
-                    y -= target.rowHeights[row] + gap * 2;
+                    var rh = target.rowHeights[row];
+                    if(row == 0) rh = std::max(prompt_height, rh);
+                    y -= rh + gap * 2;
                     row++;
                     col = 0;
                     x = gap;
                 }
             }
 
-            {
-                let ptmp = tmp;
-                let str = FormattedStr{
-                    .bold = false,
-                    .italic = false,
-                    .len = text_c,
-                    .str = text,
-                    .next = nullptr,
-                };
-                let res = prepare(&str, { 14, item_w, 0, -14, false });
-                draw(res.dl, 0xffffff, gap, initY);
-                tmp = ptmp;
-            }
+            draw(res.dl, 0xffffff, gap, initY);
+            tmp = ptmp;
 
             // what is even the point of BlitNamed if I must unbind
             // the framebuffer before using it??
