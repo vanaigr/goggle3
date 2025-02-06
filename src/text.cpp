@@ -475,8 +475,6 @@ LayoutResult lay_out(
 TextLayout prepare(FormattedStr const *text, LayoutParams p) {
     if(p.max_width <= 0) throw 1;
 
-    let dy = p.font_size * 1.25;
-
     let data = (Draw*)align(tmp, 6);
     tmp = (char*)data;
     talloc<Draw>(1024);
@@ -503,7 +501,7 @@ TextLayout prepare(FormattedStr const *text, LayoutParams p) {
 
             if(c == '\n') {
                 commited.x = 0;
-                commited.y -= dy;
+                commited.y -= p.line_height;
                 commited.prev_glyph_index = -1;
                 commited.text_i++;
                 commited.continuing = false;
@@ -519,7 +517,7 @@ TextLayout prepare(FormattedStr const *text, LayoutParams p) {
 
                     if(s.x >= p.max_width || s.x + ci.width > p.max_width) {
                         s.x = 0;
-                        s.y -= dy;
+                        s.y -= p.line_height;
                         s.prev_glyph_index = -1;
                     }
                     else {
@@ -537,13 +535,13 @@ TextLayout prepare(FormattedStr const *text, LayoutParams p) {
                 if(res.cutoff) {
                     if(res.state.continuing || !p.wordbreak) {
                         res.state.x = 0;
-                        res.state.y -= dy;
+                        res.state.y -= p.line_height;
                         res.state.prev_glyph_index = -1;
                     }
                     else {
                         var cand = commited;
                         cand.x = 0;
-                        cand.y -= dy;
+                        cand.y -= p.line_height;
                         cand.prev_glyph_index = -1;
 
                         res = lay_out(cand, curStr, fi, p.max_width, data);

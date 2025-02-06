@@ -118,7 +118,7 @@ static Target calculateTarget(Response resp) {
             .str = res.site_display_url.items,
             .next = nullptr,
         };
-        let url = prepare(&urlStr, { 14, item_w, 0, -14 });
+        let url = prepare(&urlStr, { 14, item_w, 0, -14, 22 });
         let urlOff = url.stop_y - 2;
 
         TextLayout key{};
@@ -132,7 +132,7 @@ static Target calculateTarget(Response resp) {
                 .str = open_display_keys[i].items,
                 .next = nullptr
             };
-            key = prepare(&keyStr, { 28, item_w, 0, urlOff - 28 });
+            key = prepare(&keyStr, { 26, item_w, 0, urlOff - 26, 26 });
             // hope it's one line. Otherwise we need to provide a begin_y
             // for the next call, and the default value for it can't be easily made.
             offX = key.stop_x + 7;
@@ -146,10 +146,10 @@ static Target calculateTarget(Response resp) {
             .str = res.title.items,
             .next = nullptr,
         };
-        let title = prepare(&nameStr, { 20, item_w, offX, offY });
+        let title = prepare(&nameStr, { 20, item_w, offX, offY, 26 });
         let titleOff = title.stop_y - 8;
 
-        let desc = prepare(res.desc, { 14, item_w, 0, titleOff - 14 });
+        let desc = prepare(res.desc, { 14, item_w, 0, titleOff - 14, 22 });
 
         let t = calculatedTexts[i] = {
             .url = url.dl,
@@ -298,7 +298,7 @@ int main(int argc, char **argv) {
 
     XSelectInput(display, rootWindow, KeyPressMask);
 
-    var inserting = true;
+    var inserting = false;
 
     static var hidden = false;
 
