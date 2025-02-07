@@ -64,7 +64,11 @@ static void header_check(char const *buffer, int count) {
         newCookie.value.items
     ); */
 
-    let c = fopen("./cookie.txt", "a+");
+    // if the file doesn't exist, then blame C api.
+    // Why can't you open a file for read and write
+    // even if it doesn't exist. Ok. I won't read,
+    // BUT WHY CAN'T I WRITE???
+    let c = fopen("./cookie.txt", "r+");
     fseek(c, 0, SEEK_END);
     let c_count = (int)ftell(c);
     fseek(c, 0, SEEK_SET);
@@ -254,7 +258,7 @@ int main(int argc, char **argv) {
     int screen_height = XDisplayHeight(display, screen);
 
     int bot = 20;
-    static int pad = std::min(screen_width, screen_height) / 30;
+    static int pad = std::min(screen_width, screen_height) / 50;
     width = screen_width - 2*pad;
     height = screen_height - 2*pad - bot;
 
