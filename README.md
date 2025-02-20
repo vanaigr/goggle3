@@ -1,10 +1,46 @@
-# WIP
+# Goggle
 
-This is a prototype for an app that serves the same purpose as [Google refresh 2023](https://github.com/vanaigr/google-refresh-2023) 
-and [goggle2](https://github.com/vanaigr/Goggle2), namely: to create a fast, keyboard-first interface to google search.
+A keyboard-first Linux app that lets you perform a Google search from anywhere using a keyboard shortcut:
 
-Basically this:
+![image](https://github.com/user-attachments/assets/35e13d01-50f9-41e6-9642-ee641982416a)
 
-![image](https://github.com/user-attachments/assets/5c9a467d-db58-4458-8380-6fe6eb276e44)
+This is the third iteration of the same general concept. The previous two are:
+* [Google refresh 2023](https://github.com/vanaigr/google-refresh-2023)
+* [Goggle2](https://github.com/vanaigr/Goggle2)
 
-but a standalone app that can be opened at any point with a keyboard shortcut, instead of having to open the browser window and a new tab.
+This app is still in the prototyping phase. It works but is lacking some features i.e. definition results, featured answers, images, videos, favicons, etc.
+It also only works with `i3`.
+
+Last, it, sadly, requires _special_ cookies. Since Jan 2025, Google blocks the less bloated `gbv=1` JavaScript-less searches ([source - Whoogle](https://github.com/benbusby/whoogle-search/blob/1339c49dc5301ea7fb05b47b7adbeb82f851c038/README.md?plain=1#L1-L7))
+
+I copied mine from the browser, but they work only because I've been using `Google refresh 2023` before Google made this change, and it relies on `gbv=1` (so Google continues to allow _me_ to use it?).
+
+## Usage
+
+Bind a key to open search:
+```
+bindsym <key> exec <Repo path>/show_search.sh
+```
+
+## Keyboard interface
+
+There are 2 input modes: normal and insert.
+
+Insert mode keys:
+* [ctrl] left arrow - move cursor left [one word]
+* [ctrl] right arrow - move cursor right [one word]
+* Esc - exit insert mode
+* ctrl backspace - delete word
+* alt backspace - delete query
+
+Normal mode keys:
+* Yellow labels before result title - labels. Press corresponding key to open in the browser. First label is spacebar
+* q - hide the window
+* i - enter insert mode
+
+Both modes:
+* alt q - hide the window
+* up arrow - scroll up
+* down arrow - scroll down
+* ctrl v - paste from clipboard
+* Enter - search
