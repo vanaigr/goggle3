@@ -129,6 +129,29 @@ static size_t write_callback(void *contents, size_t size, size_t nmemb, Response
     return chunk_len;
 }
 
+static char *tmp_cookie() {
+    let cookie = STR("Cookie: ");
+    memcpy(tmp, cookie.items, cookie.count);
+
+    let cookieF = fopen("cookie.txt", "r");
+    fseek(cookieF, 0, SEEK_END);
+    let cookieLen = ftell(cookieF);
+    fseek(cookieF, 0, SEEK_SET);
+
+    var cur = tmp + cookie.count;
+    let end = cur + cookieLen;
+    fread(cur, cookieLen, 1, cookieF);
+    fclose(cookieF);
+    while(cur < end) {
+        let c = *cur;
+        if(c == '\r' || c == '\n') break;
+        cur++;
+    }
+    *cur = '\0';
+
+    return tmp;
+}
+
 static let open_display_keys = std::array{
     STR("·"), STR("S"), STR("J"), STR("K"), STR("D"), STR("L"),
     STR("N"), STR("E"), STR("W"), STR("O"),
@@ -245,12 +268,75 @@ static Target calculateTarget(Response resp) {
     return { results.count, results.items, calculatedTexts, calculatedRowHeights };
 }
 
+static size_t ignore(void *contents, size_t size, size_t nmemb, Response *userp) {
+    return size * nmemb;
+}
+
+static size_t refresh_cookie_header_callback(
+    char *buffer,
+    size_t size,
+    size_t nitems,
+    void *userdata
+) {
+    let ptmp = tmp;
+    header_check(buffer, (int)nitems);
+    tmp = ptmp;
+    if(nitems == 2 && streq({ buffer, 2 }, STR("\r\n"))) {
+        return 0;
+    }
+    return nitems;
+}
+
+// Because google decided that without ELITE SUPER-ACCESS cookies,
+// you are not allowed to make gbv=1 requests.
+// But the cookies need to be refreshed by REGULAR SEARCH.
+// Or at least I don't have any explanation why I can't just get
+// new cookies from regular search and must pass them my old cookies.
+static void refresh_cookie() {
+    let multi_handle = curl_multi_init();
+
+    let request = curl_easy_init();
+
+    let headers = curl_slist_append(nullptr, "Accept: */*");
+    // It used to be fine, but now it fails without useragent.
+    // And it has to be "valid"...
+    curl_slist_append(headers, "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36");
+
+    curl_slist_append(headers, tmp_cookie());
+
+    curl_easy_setopt(request, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(request, CURLOPT_HEADERFUNCTION, refresh_cookie_header_callback);
+    curl_easy_setopt(request, CURLOPT_WRITEFUNCTION, ignore);
+    // curl_easy_setopt(request, CURLOPT_VERBOSE, 1L);
+
+    let url = "https://www.google.com/search?q=refresh+my+cookies";
+
+    curl_easy_setopt(request, CURLOPT_URL, url);
+
+    curl_multi_add_handle(multi_handle, request);
+
+    while(true) {
+        int left_running;
+        curl_multi_perform(multi_handle, &left_running);
+        if(left_running == 0) break;
+    }
+
+    curl_multi_remove_handle(multi_handle, request);
+    curl_easy_cleanup(request);
+    curl_slist_free_all(headers);
+    curl_multi_cleanup(multi_handle);
+}
+
 int main(int argc, char **argv) {
     display = XOpenDisplay(NULL);
     if (display == NULL) return 1;
 
     curl_global_init(CURL_GLOBAL_DEFAULT);
     let multi_handle = curl_multi_init();
+
+    #if !READ_FILE
+    refresh_cookie();
+    #endif
 
     int screen = DefaultScreen(display);
 
@@ -688,24 +774,7 @@ int main(int argc, char **argv) {
                         // And it has to be "valid"...
                         curl_slist_append(headers, "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36");
 
-                        let cookie = STR("Cookie: ");
-                        memcpy(tmp, cookie.items, cookie.count);
-                        let cookieF = fopen("cookie.txt", "r");
-                        fseek(cookieF, 0, SEEK_END);
-                        let cookieLen = ftell(cookieF);
-                        fseek(cookieF, 0, SEEK_SET);
-                        var cur = tmp + cookie.count;
-                        let end = cur + cookieLen;
-                        fread(cur, cookieLen, 1, cookieF);
-                        fclose(cookieF);
-                        while(cur < end) {
-                            let c = *cur;
-                            if(c == '\r' || c == '\n') break;
-                            cur++;
-                        }
-                        *cur = '\0';
-
-                        curl_slist_append(headers, tmp);
+                        curl_slist_append(headers, tmp_cookie());
 
                         curl_easy_setopt(request, CURLOPT_HTTPHEADER, headers);
                         curl_easy_setopt(request, CURLOPT_HEADERFUNCTION, header_callback);
