@@ -5,15 +5,6 @@
 #include"alloc.h"
 #include"defs.h"
 
-#if 0
-    Tag const *title;
-    Tag const *site_name;
-    Tag const *site_display_url;
-    str rawUrl;
-    Tag const *desc;
-#endif
-
-
 template<typename P>
 static void innerText(Tag const *t, P const &processor) {
     var text_begin = t->content_beg;
@@ -107,7 +98,7 @@ static void bodystr(str chunk) {
     tmp += chunk.count;
 }
 
-static PResult process(Result r) {
+static PResult process(Result r, GLBuffer &iconsBuf) {
     let titleBeg = tmp;
     innerText(r.title, bodystr);
     let titleEnd = tmp;
@@ -128,6 +119,8 @@ static PResult process(Result r) {
         url = mkstr(b, e);
     }
 
+    let texture = decodeIcon(r.favicon_url, iconsBuf);
+
     let siteDisplayUrlBeg = tmp;
     innerText(r.site_display_url, bodystr);
     let siteDisplayUrlEnd = tmp;
@@ -139,14 +132,15 @@ static PResult process(Result r) {
         .title = mkstr(titleBeg, titleEnd),
         .site_display_url = mkstr(siteDisplayUrlBeg, siteDisplayUrlEnd),
         .url = url,
+        .texture = texture,
         .desc = desc,
     };
 }
 
-PResults processResults(Results in) {
+PResults processResults(Results in, GLBuffer &iconsBuf) {
     let res = talloc<PResult>(in.count);
     for(var i = 0; i < in.count; i++) {
-        res[i] = process(in.items[i]);
+        res[i] = process(in.items[i], iconsBuf);
     }
     return { .items = res, .count = in.count };
 }

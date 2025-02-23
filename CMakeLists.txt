@@ -34,4 +34,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${LIBCURL_INCLUDE_DIRS})
 target_link_directories(${PROJECT_NAME} PRIVATE ${LIBCURL_LIBRARY_DIRS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBCURL_LIBRARIES})
 
+pkg_check_modules(LIBPNG REQUIRED libpng)
+target_include_directories(${PROJECT_NAME} PRIVATE ${LIBPNG_INCLUDE_DIRS})
+target_link_directories(${PROJECT_NAME} PRIVATE ${LIBPNG_LIBRARY_DIRS})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBPNG_LIBRARIES})
+
 target_link_libraries(${PROJECT_NAME} PRIVATE X11 GL GLEW)

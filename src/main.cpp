@@ -193,8 +193,9 @@ struct Target {
 
 static Display *display;
 static Window window;
+static GLBuffer iconsBuf;
 
-#define READ_FILE 0
+#define READ_FILE 1
 
 static Target calculateTarget(Response resp) {
     #if not(READ_FILE)
@@ -203,7 +204,11 @@ static Target calculateTarget(Response resp) {
     fclose(file);
     #endif
 
-    let results = processResults(extractResults(htmlToTags(resp.data, resp.len - 1)));
+    let results = processResults(
+        extractResults(htmlToTags(resp.data, resp.len - 1)),
+        iconsBuf
+    );
+    ce;
 
     let calculatedTexts = talloc<CalculatedText>(results.count);
 
@@ -273,6 +278,7 @@ static Target calculateTarget(Response resp) {
         }
     }
 
+    ce;
     return { results.count, results.items, calculatedTexts, calculatedRowHeights };
 }
 
@@ -358,6 +364,12 @@ int main(int argc, char **argv) {
     }
     ce;
 
+    glGenBuffers(1, (GLuint*)&iconsBuf.buffer);
+
+    if(image_init(&iconsBuf)) {
+        return 1;
+    }
+    ce;
 
     glEnable(GL_BLEND);
 #if LCD
@@ -533,6 +545,7 @@ int main(int argc, char **argv) {
 
             var row = 0;
             var col = 1;
+            var ix = 0;
             for(var i = 0; i < target.count; i++) {
                 let t = target.texts[i];
 
@@ -540,6 +553,18 @@ int main(int argc, char **argv) {
                 draw(t.key, inserting ? insertColor : regularColor, x, y);
                 draw(t.title, 0x99c3ff, x, y);
                 draw(t.desc, 0xdddee1, x, y);
+
+                let tt = target.results[i].texture;
+                if(tt.offset != -1) {
+                    let td = TextureDesc{
+                        tt.offset,
+                        ix, 0,
+                        tt.width, tt.height
+                    };
+                    ix += tt.width;
+
+                    image_draw({ &td, 1 });
+                }
 
                 //rect(x, y - target.rowHeights[row], item_w, target.rowHeights[row]);
 

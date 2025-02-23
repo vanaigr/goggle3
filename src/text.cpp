@@ -622,6 +622,7 @@ void rect(int x, int y, int w, int h, unsigned color) {
 }
 
 void rect(int x, int y, int w, int h, vec4 color) {
+    ce;
     int data[]{ x, y, w, h };
     glNamedBufferData(bbuf, 16, data, GL_DYNAMIC_DRAW);
     ce;

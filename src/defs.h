@@ -11,6 +11,12 @@ void programReport_(char const *file, int line, int prog, char const *name = "wh
 #define programReport(...) programReport_(__FILE__, __LINE__, __VA_ARGS__)
 
 
+struct GLBuffer {
+    int buffer;
+    int count;
+    int capacity;
+};
+
 struct str {
     char const *items;
     int count;
@@ -56,12 +62,12 @@ struct Result {
     Tag const *title;
     Tag const *site_display_url;
     str rawUrl;
+    str favicon_url;
     Tag const *desc;
 
     // TODO: date
 
     // str ping;
-    // str favicon;
 };
 
 struct Results {
@@ -70,6 +76,12 @@ struct Results {
 };
 
 Results extractResults(Tags tags);
+
+struct Texture {
+    int offset; // -1 if none
+    int width;
+    int height;
+};
 
 struct FormattedStr {
     bool bold;
@@ -83,6 +95,7 @@ struct PResult {
     str title;
     str site_display_url;
     str url;
+    Texture texture;
     FormattedStr const *desc;
 };
 
@@ -91,7 +104,7 @@ struct PResults {
     int count;
 };
 
-PResults processResults(Results res);
+PResults processResults(Results res, GLBuffer &iconsBuf);
 
 struct FontDef {
     int font_size;
@@ -149,3 +162,20 @@ struct Cookies {
 Cookie parseOneCookie(char const *&cur, char const *end);
 Cookies getCookies(char const *buf, int count);
 str encodeCookies(Cookies cookies);
+
+int reserveBytes(GLBuffer &buf, int byte_count);
+
+Texture decodeIcon(str string, GLBuffer &buf);
+
+struct TextureDesc {
+    int off;
+    int x, y;
+    int w, h;
+};
+struct TextureDescs {
+    TextureDesc const *items;
+    int count;
+};
+
+int image_init(GLBuffer *buf);
+void image_draw(TextureDescs descs);

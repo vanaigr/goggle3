@@ -54,6 +54,7 @@ int tryAddResult(Results &res, Tag *begin, Attr const *attrs) {
 
     let &iconCont = *findFirstName(&titleTag + 1, a.descendants_e, STR("span"));
     let &websiteNameTag = *findFirstName(&iconCont + 1, a.descendants_e, STR("span"));
+    let &iconTag = *findFirstName(&iconCont + 1, a.descendants_e, STR("img"));
 
     let &cite = *findFirstName(&websiteNameTag + 1, a.descendants_e, STR("cite"));
 
@@ -100,11 +101,30 @@ int tryAddResult(Results &res, Tag *begin, Attr const *attrs) {
         href = attrs[i].value;
     }
 
+    str favicon_url;
+    {
+        var i = iconTag.attrs_beg;
+        let end = iconTag.attrs_end;
+        while(i < end) {
+            let a = attrs[i];
+            if(streq(a.name, STR("src"))) break;
+            i++;
+        }
+
+        if(i == end) {
+            favicon_url = { nullptr, 0 };
+        }
+        else {
+            favicon_url = attrs[i].value;
+        }
+    }
+
     res.items[res.count++] = {
         .title = &titleTag,
         //.site_name = &websiteNameTag,
         .site_display_url = &cite,
         .rawUrl = href,
+        .favicon_url = favicon_url,
         .desc = desc,
     };
 
