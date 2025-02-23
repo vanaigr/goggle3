@@ -197,7 +197,7 @@ static Display *display;
 static Window window;
 static GLBuffer iconsBuf;
 
-#define READ_FILE 1
+#define READ_FILE 0
 
 static Target calculateTarget(Response resp) {
     #if not(READ_FILE)
