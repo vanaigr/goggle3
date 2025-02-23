@@ -182,6 +182,8 @@ struct CalculatedText {
     DrawList key;
     DrawList title;
     DrawList desc;
+    int favicon_x_off;
+    int favicon_y_off;
 };
 
 struct Target {
@@ -256,7 +258,13 @@ static Target calculateTarget(Response resp) {
             .str = res.title.items,
             .next = nullptr,
         };
-        let title = prepare(&nameStr, { 20, item_w, offX, offY, 26 });
+        let title_w = res.texture.offset == -1 ? item_w : item_w - res.texture.width - 4;
+
+        let title_font_size = 20;
+        let favicon_x_off = item_w - res.texture.width - 2;
+        let favicon_y_off = offY + (title_font_size / 2 - 3) + (res.texture.height / 2);
+
+        let title = prepare(&nameStr, { title_font_size, title_w, offX, offY, 26 });
         let titleOff = title.stop_y - 8;
 
         let desc = prepare(res.desc, { 14, item_w, 0, titleOff - 14, 22 });
@@ -266,6 +274,8 @@ static Target calculateTarget(Response resp) {
             .key = key.dl,
             .title = title.dl,
             .desc = desc.dl,
+            .favicon_x_off = favicon_x_off,
+            .favicon_y_off = favicon_y_off,
         };
         let totalHeight = -desc.stop_y;
 
@@ -545,7 +555,6 @@ int main(int argc, char **argv) {
 
             var row = 0;
             var col = 1;
-            var ix = 0;
             for(var i = 0; i < target.count; i++) {
                 let t = target.texts[i];
 
@@ -558,10 +567,10 @@ int main(int argc, char **argv) {
                 if(tt.offset != -1) {
                     let td = TextureDesc{
                         tt.offset,
-                        ix, 0,
+                        x + t.favicon_x_off,
+                        y + t.favicon_y_off,
                         tt.width, tt.height
                     };
-                    ix += tt.width;
 
                     image_draw({ &td, 1 });
                 }

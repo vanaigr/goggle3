@@ -6,8 +6,6 @@
 #include"defs.h"
 #include"alloc.h"
 
-uint8_t *decode_png_rgba(const uint8_t *png_data, size_t png_size, int *out_width, int *out_height);
-
 static int ilookup(uint8_t code_) {
     char code = code_;
     if(code >= 'A' && code <= 'Z') return code - 'A';
@@ -61,19 +59,92 @@ static str decodeBase64(uint8_t *b, uint8_t *e) {
     return { nullptr, 0 };
 }
 
+static bool inited;
+static GLuint srcFB, dstFB;
+static GLuint dstT;
+
+static constexpr let icon_size = 24;
+
+static void init() {
+    if(inited) return;
+
+    glGenFramebuffers(1, &srcFB);
+    glGenFramebuffers(1, &dstFB);
+
+    glGenTextures(1, &dstT);
+    glBindTexture(GL_TEXTURE_2D, dstT);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, icon_size, icon_size);
+    ce;
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dstFB);
+    glFramebufferTexture(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, dstT, 0);
+    ce;
+
+    if(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        printf("dst framebuffer?\n");
+        exit(1);
+    }
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, srcFB);
+
+    inited = true;
+}
+
 static Texture decodePng(uint8_t *b, uint8_t *e, GLBuffer &buf) {
     let res = decodeBase64(b, e);
     if(res.items == nullptr) return { -1, 0, 0 };
 
-    int width = 0, height = 0;
-    let data = decode_png_rgba((uint8_t*)res.items, res.count, &width, &height);
-    if(data == nullptr) return { -1, 0, 0 };
-    let dataSize = width * height * 4;
+    let ptmp = tmp;
+    var bitmap = decode_png_rgba((uint8_t*)res.items, res.count);
+    if(bitmap.data == nullptr) return { -1, 0, 0 };
+    var dataSize = bitmap.width * bitmap.height * 4;
+
+    if(bitmap.width != icon_size || bitmap.height != icon_size) {
+        init();
+
+        GLuint srcT;
+        glGenTextures(1, &srcT);
+        glBindTexture(GL_TEXTURE_2D, srcT);
+        glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, bitmap.width, bitmap.height);
+        glTexSubImage2D(
+            GL_TEXTURE_2D, 0,
+            0, 0, bitmap.width, bitmap.height,
+            GL_RGBA, GL_UNSIGNED_BYTE,
+            bitmap.data
+        );
+        ce;
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, srcFB);
+        glFramebufferTexture(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, srcT, 0);
+        ce;
+
+        if(glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            printf("src framebuffer?\n");
+            exit(1);
+        }
+
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dstFB);
+        glBlitFramebuffer(
+            0, 0, bitmap.width, bitmap.height,
+            0, 0, icon_size, icon_size,
+            GL_COLOR_BUFFER_BIT,
+            GL_LINEAR
+        );
+        ce;
+
+        glDeleteTextures(1, &srcT);
+        ce;
+
+        bitmap = { (uint8_t*)ptmp, icon_size, icon_size };
+        dataSize = bitmap.width * bitmap.height * 4;
+        tmp = (char*)bitmap.data + dataSize;
+        glGetTextureImage(dstT, 0, GL_RGBA, GL_UNSIGNED_BYTE, dataSize, bitmap.data);
+        ce;
+    }
 
     let off = reserveBytes(buf, dataSize);
-    glNamedBufferSubData(buf.buffer, off, dataSize, data);
+    glNamedBufferSubData(buf.buffer, off, dataSize, bitmap.data);
 
-    return { off, width, height };
+    return { off, bitmap.width, bitmap.height };
 }
 
 Texture decodeIcon(str string, GLBuffer &buf) {
@@ -89,12 +160,4 @@ Texture decodeIcon(str string, GLBuffer &buf) {
         return res;
     }
     return { -1, 0, 0 };
-}
-
-#include<cassert>
-int main3() {
-    let in = STR("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd+UAAAA7ElEQVR4AWJwLwC0WwcaCENhFMefoV6hABgEBhDAxN7jAggRPcSeoAcYQFgIInuSIcAlwLqHM45klvtt0PCXO7Pfvu3Gskn7c3AG/WldhNIpwRaNDQJadb9EH9agYiWQ13G55doRPYwFLkKNIpiQ68QcZIqUXHuszUBMo1PJLm2JJ/qoo0FcSKZCBdGc62asd5h8wkRTKxCIkwsvZPMU+h7tQP4VNB5zehNR4LWq6tD+y+N0xHyH8/wzigFbXEA2TColiMed3ODTBMQUPXlzEJP0ZQnWl9t9MyQr8KdiwTy0C2WD4rnzN80MmvcG9xb1UQNO3ZEAAAAASUVORK5CYII=");
-
-    GLBuffer buf;
-    decodeIcon(in, buf);
 }

@@ -179,3 +179,9 @@ struct TextureDescs {
 
 int image_init(GLBuffer *buf);
 void image_draw(TextureDescs descs);
+
+struct Bitmap {
+    unsigned char *data;
+    int width, height;
+};
+Bitmap decode_png_rgba(const unsigned char *png_data, int png_size);

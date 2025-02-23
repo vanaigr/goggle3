@@ -4,6 +4,7 @@
 #include <png.h>
 #include<string.h>
 
+#include"defs.h"
 #include"alloc.h"
 
 // Can we have more boilerplate please 🥺
@@ -25,28 +26,28 @@ void read_png_from_memory(png_structp png_ptr, png_bytep out_bytes, png_size_t b
     }
 }
 
-uint8_t *decode_png_rgba(const uint8_t *png_data, size_t png_size, int *out_width, int *out_height) {
+Bitmap decode_png_rgba(const unsigned char *png_data, int png_size) {
     png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-    if (!png_ptr) return NULL;
+    if (!png_ptr) return {};
 
     png_infop info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr) {
         png_destroy_read_struct(&png_ptr, NULL, NULL);
-        return NULL;
+        return {};
     }
 
     if (setjmp(png_jmpbuf(png_ptr))) {
         png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
-        return NULL;
+        return {};
     }
 
-    MemoryReader reader = {png_data, png_size, 0};
+    MemoryReader reader = { png_data, (size_t)png_size, 0 };
     png_set_read_fn(png_ptr, &reader, read_png_from_memory);
 
     png_read_info(png_ptr, info_ptr);
 
-    *out_width = png_get_image_width(png_ptr, info_ptr);
-    *out_height = png_get_image_height(png_ptr, info_ptr);
+    auto width = png_get_image_width(png_ptr, info_ptr);
+    auto height = png_get_image_height(png_ptr, info_ptr);
     png_byte color_type = png_get_color_type(png_ptr, info_ptr);
     png_byte bit_depth = png_get_bit_depth(png_ptr, info_ptr);
 
@@ -71,21 +72,53 @@ uint8_t *decode_png_rgba(const uint8_t *png_data, size_t png_size, int *out_widt
 
     png_read_update_info(png_ptr, info_ptr);
 
-    size_t row_bytes = png_get_rowbytes(png_ptr, info_ptr);
-    size_t image_size = row_bytes * (*out_height);
+    size_t image_size = width * height * 4;
     uint8_t *image_data = (uint8_t *)alloc(image_size, 2);
 
+    size_t row_bytes = png_get_rowbytes(png_ptr, info_ptr);
     auto ptmp = tmp;
-    png_bytep *row_pointers = talloc<png_bytep>(*out_height);
-    for (int y = 0; y < *out_height; y++) {
-        row_pointers[y] = image_data + y * row_bytes;
+    auto const readImg = [&](uint8_t *data) {
+        png_bytep *row_pointers = talloc<png_bytep>(height);
+        for (int y = 0; y < height; y++) {
+            row_pointers[y] = data + y * row_bytes;
+        }
+        png_read_image(png_ptr, row_pointers);
+    };
+
+    if(row_bytes != width * 4) {
+        // GOD I LOVE THIS LIBRARY, BEST API EVER!
+        if(color_type == PNG_COLOR_TYPE_PALETTE && row_bytes == width * 3) {
+            auto image2 = (uint8_t*)alloc(row_bytes * height);
+            readImg(image2);
+            auto imgRow = width * 4;
+            auto img2Row = row_bytes;
+            for(auto y = 0; y < height; y++) {
+                for(auto x = 0; x < width; x++) {
+                    auto const ib = y * imgRow + x * 4;
+                    auto const i2b = y * img2Row + x * 3;
+                    image_data[ib + 0] = image2[i2b + 0];
+                    image_data[ib + 1] = image2[i2b + 1];
+                    image_data[ib + 2] = image2[i2b + 2];
+                    image_data[ib + 3] = 0xff;
+                }
+            }
+        }
+        else {
+            printf("libpng doing nonsence again...\n");
+            png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+            return {};
+        }
+    }
+    else {
+        readImg(image_data);
     }
 
-    png_read_image(png_ptr, row_pointers);
     png_read_end(png_ptr, NULL);
+
     tmp = ptmp;
 
     png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
 
-    return image_data;  // RGBA data
+    return { image_data, (int)width, (int)height };
 }
+

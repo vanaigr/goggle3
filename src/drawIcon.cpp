@@ -51,7 +51,7 @@ int image_init(GLBuffer *buf) {
             for(; off < total; off += 64) {
                 int x = off % texture_desc.b;
                 int y = off / texture_desc.b;
-                ivec2 coord = texture_desc.xy + ivec2(x, y);
+                ivec2 coord = texture_desc.xy + ivec2(x, -y);
 
                 uint rgb = texture_data[texture_off + off];
                 vec4 col = vec4(
@@ -62,7 +62,7 @@ int image_init(GLBuffer *buf) {
                 );
                 col *= 1.0 / 255.0;
 
-                vec4 prev = imageLoad(outImg, coord);
+                vec4 prev = vec4(1);//imageLoad(outImg, coord);
                 vec4 color = vec4(mix(prev.rgb, col.rgb, col.a), 1);
                 imageStore(outImg, coord, color);
             }
