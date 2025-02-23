@@ -14,96 +14,113 @@ Tag const *findFirstName(Tag const *beg, Tag const *end, str name) {
 
 #define err do { printf("error on line %d\n", __LINE__); fflush(stdout); return; } while(0)
 
-void tryAddResult(Results &res, Tag const *begin, Attr const *attrs) {
+int tryAddResult(Results &res, Tag *begin, Attr const *attrs) {
+#define rl return __LINE__
+
     let &root = *begin;
-    if(!streq(root.name, STR("div"))) err;
-    if(root.descendants_e == begin + 1) err;
+    if(!streq(root.name, STR("div"))) rl;
+    if(root.descendants_e == begin + 1) rl;
 
     #define gotoFirstChild(cont, expectName) do {\
-        if(cont->descendants_e == cont + 1) err; \
+        if(cont->descendants_e == cont + 1) rl; \
         cont = cont + 1; \
-        if(!streq(cont->name, STR(expectName))) err; \
+        if(!streq(cont->name, STR(expectName))) rl; \
     } while(0)
 
     var container = &root;
+    {
+        var i = container->attrs_beg;
+        let end = container->attrs_end;
+        while(i < end) {
+            if(streq(attrs[i].name, STR("jscontroller"))) break;
+            i++;
+        }
+
+        if(i == end) rl;
+    }
+
     gotoFirstChild(container, "div");
 
     var first_cont = container;
     gotoFirstChild(first_cont, "div");
 
-    let a = findFirstName(first_cont, first_cont->descendants_e, STR("a"));
-    if(a == first_cont->descendants_e) err;
+    let &cont = *first_cont;
 
-    var cur = a;
-    gotoFirstChild(cur, "div");
-    let inside_a_end = cur->descendants_e;
+    let &a = *findFirstName(&cont, cont.descendants_e, STR("a"));
+    if(&a == cont.descendants_e) rl;
 
-    if(cur + 1 == inside_a_end) err;
-    let titleTag = cur + 1;
-    cur = titleTag->descendants_e;
+    let &titleTag = *findFirstName(&a, a.descendants_e, STR("h3"));
+    if(&titleTag == a.descendants_e) rl;
 
-    if(cur == inside_a_end) err;
-    let websiteNameTag = cur;
+    let &iconCont = *findFirstName(&titleTag + 1, a.descendants_e, STR("span"));
+    let &websiteNameTag = *findFirstName(&iconCont + 1, a.descendants_e, STR("span"));
 
-    let desc = first_cont->descendants_e;
-    if(desc == container->descendants_e) err;
+    let &cite = *findFirstName(&websiteNameTag + 1, a.descendants_e, STR("cite"));
+
+    var desc = (Tag const *)nullptr;
+
+    var cur = first_cont;
+    while(true) {
+        // TODO: no description? Maybe should allow...
+        if(container->descendants_e == cur->descendants_e) rl;
+        cur = cur->descendants_e;
+        if(!streq(cur->name, STR("div"))) rl;
+
+        var c = cur;
+        gotoFirstChild(c, "div");
+
+        var i = c + 1;
+        let end = c->descendants_e;
+        var allSpan = i != end;
+        while(i < end) {
+            if(!streq(i->name, STR("span"))) {
+                allSpan = false;
+                break;
+            }
+            i = i->descendants_e;
+        }
+
+        if(allSpan) {
+            desc = c;
+            break;
+        }
+    }
 
     str href;
     {
-        var i = a->attrs_beg;
-        let end = a->attrs_end;
+        var i = a.attrs_beg;
+        let end = a.attrs_end;
         while(i < end) {
             let a = attrs[i];
             if(streq(a.name, STR("href"))) break;
             i++;
         }
 
-        if(i == end) err;
+        if(i == end) rl;
         href = attrs[i].value;
     }
 
     res.items[res.count++] = {
-        .title = titleTag,
-        .site_display_url = websiteNameTag,
+        .title = &titleTag,
+        //.site_name = &websiteNameTag,
+        .site_display_url = &cite,
         .rawUrl = href,
         .desc = desc,
     };
+
+    return 0;
 }
 
-void addResults(Tags tags, Results &res) {
-    let it = &tags.items[0];
-    let it_end = it->descendants_e;
+void searchResults(Results &res, Tag *tag, Attr *attrs, int lvl = 0) {
+    let addErr = tryAddResult(res, tag, attrs);
 
-    var body = it + 1;
-    while(body < it_end) {
-        if(streq(body->name, STR("body"))) break;
-        body = body->descendants_e;
-    }
-    if(body == it_end) err;
-
-    var main = body + 1;
-    let body_end = body->descendants_e;
-    while(main < body_end) {
-        if(streq(main->name, STR("div"))) break;
-        main = main->descendants_e;
-    }
-    if(main == body_end) err;
-
-    // skip first div with the prompt
-    var item = main + 1;
-    let main_end = main->descendants_e;
-    while(item < main_end) {
-        if(streq(item->name, STR("div"))) break;
-        item = item->descendants_e;
-    }
-    if(item == main_end) err;
-    item++;
-
-    while(item < main_end) {
-        if(streq(item->name, STR("div"))) {
-            tryAddResult(res, item, tags.attrs);
+    if(addErr && streq(tag->name, STR("div"))) {
+        var i = tag + 1;
+        let end = tag->descendants_e;
+        while(i < end) {
+            searchResults(res, i, attrs, lvl + 1);
+            i = i->descendants_e;
         }
-        item = item->descendants_e;
     }
 }
 
@@ -111,7 +128,7 @@ Results extractResults(Tags tags) {
     assert(tags.count > 0);
 
     Results res = { .items = (Result*)align(tmp, 6), .count = 0 };
-    addResults(tags, res);
+    searchResults(res, tags.items, tags.attrs);
     tmp = (char*)(res.items + res.count);
 
     return res;

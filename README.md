@@ -11,10 +11,6 @@ This is the third iteration of the same general concept. The previous two are:
 This app is still in the prototyping phase. It works but is lacking some features i.e. definition results, featured answers, images, videos, favicons, etc.
 It also only works with `i3`.
 
-Last, it, sadly, requires _special_ cookies. Since Jan 2025, Google blocks the less bloated `gbv=1` JavaScript-less searches ([source - Whoogle](https://github.com/benbusby/whoogle-search/blob/1339c49dc5301ea7fb05b47b7adbeb82f851c038/README.md?plain=1#L1-L7))
-
-I copied mine from the browser, but they work only because I've been using `Google refresh 2023` before Google made this change, and it relies on `gbv=1` (so Google continues to allow _me_ to use it?).
-
 ## Usage
 
 Bind a key to open search:

@@ -791,7 +791,11 @@ int main(int argc, char **argv) {
                         curl_easy_setopt(request, CURLOPT_WRITEFUNCTION, write_callback);
                         curl_easy_setopt(request, CURLOPT_VERBOSE, 1L);
 
-                        let url = STR("https://www.google.com/search?q=");
+                        // See SEARXNG engines google
+                        let url = STR(
+                            "https://www.google.com/search?"
+                            "asearch=arc&async=use_ac:true,_fmt:prog&q="
+                        );
 
                         memcpy(tmp, url.items, url.count);
 
