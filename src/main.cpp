@@ -484,7 +484,9 @@ int main(int argc, char **argv) {
 
         let frame_start = chrono::steady_clock::now();
 
-        if(changed) {// && frame_start >= next_redraw) {
+        if(changed && frame_start >= next_redraw) {
+            glBindFramebuffer(GL_FRAMEBUFFER, fb);
+
             glClearColor(0.12, 0.12, 0.12, 1);
             glClear(GL_COLOR_BUFFER_BIT);
 
