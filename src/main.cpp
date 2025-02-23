@@ -64,19 +64,25 @@ static void header_check(char const *buffer, int count) {
         newCookie.value.items
     ); */
 
-    // if the file doesn't exist, then blame C api.
-    // Why can't you open a file for read and write
-    // even if it doesn't exist. Ok. I won't read,
-    // BUT WHY CAN'T I WRITE???
-    let c = fopen("./cookie.txt", "r+");
-    fseek(c, 0, SEEK_END);
-    let c_count = (int)ftell(c);
-    fseek(c, 0, SEEK_SET);
+    var c = fopen("./cookie.txt", "r+");
+    var res = ([&]{
+        if(c) {
+            fseek(c, 0, SEEK_END);
+            let c_count = (int)ftell(c);
+            fseek(c, 0, SEEK_SET);
 
-    let buf = alloc(c_count);
-    fread(buf, c_count, 1, c);
+            let buf = alloc(c_count);
+            fread(buf, c_count, 1, c);
 
-    var res = getCookies(buf, c_count);
+            return getCookies(buf, c_count);
+        }
+        else {
+            // race condition
+            c = fopen("./cookie.txt", "w");
+            return Cookies{ (Cookie*)align(tmp, 6), 0 };
+        }
+    })();
+
     var i = 0;
     for(; i < res.count; i++) {
         let a = res.items[i];
@@ -134,6 +140,8 @@ static char *tmp_cookie() {
     memcpy(tmp, cookie.items, cookie.count);
 
     let cookieF = fopen("cookie.txt", "r");
+    if(!cookieF) return nullptr;
+
     fseek(cookieF, 0, SEEK_END);
     let cookieLen = ftell(cookieF);
     fseek(cookieF, 0, SEEK_SET);
@@ -191,7 +199,7 @@ static Window window;
 static Target calculateTarget(Response resp) {
     #if not(READ_FILE)
     let file = fopen("response.html", "w");
-    fwrite(resp.data, resp.len, 1, file);
+    fwrite(resp.data, resp.len > 0 ? resp.len - 1 : 0, 1, file);
     fclose(file);
     #endif
 
@@ -302,7 +310,8 @@ static void refresh_cookie() {
     // And it has to be "valid"...
     curl_slist_append(headers, "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36");
 
-    curl_slist_append(headers, tmp_cookie());
+    let tc = tmp_cookie();
+    if(tc) curl_slist_append(headers, tc);
 
     curl_easy_setopt(request, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(request, CURLOPT_HEADERFUNCTION, refresh_cookie_header_callback);
@@ -513,7 +522,7 @@ int main(int argc, char **argv) {
 
         let frame_start = chrono::steady_clock::now();
 
-        if(changed && frame_start >= next_redraw) {
+        if(changed) {// && frame_start >= next_redraw) {
             glClearColor(0.12, 0.12, 0.12, 1);
             glClear(GL_COLOR_BUFFER_BIT);
 
@@ -644,7 +653,7 @@ int main(int argc, char **argv) {
                 fread(buf, size, 1, file);
                 fclose(file);
                 buf[size] = 0;
-                response = { size, buf, size + 1, false };
+                response = { buf, size + 1 };
                 responseStatus = done;
             #else
                 int left_running;
@@ -774,14 +783,15 @@ int main(int argc, char **argv) {
                         // And it has to be "valid"...
                         curl_slist_append(headers, "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36");
 
-                        curl_slist_append(headers, tmp_cookie());
+                        let tc = tmp_cookie();
+                        if(tc) curl_slist_append(headers, tc);
 
                         curl_easy_setopt(request, CURLOPT_HTTPHEADER, headers);
                         curl_easy_setopt(request, CURLOPT_HEADERFUNCTION, header_callback);
                         curl_easy_setopt(request, CURLOPT_WRITEFUNCTION, write_callback);
                         curl_easy_setopt(request, CURLOPT_VERBOSE, 1L);
 
-                        let url = STR("https://www.google.com/search?gbv=1&q=");
+                        let url = STR("https://www.google.com/search?q=");
 
                         memcpy(tmp, url.items, url.count);
 
